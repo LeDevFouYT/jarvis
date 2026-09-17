@@ -14,6 +14,7 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from urllib.parse import quote_plus
 
 from .. import compteur
 from . import acces
@@ -58,7 +59,7 @@ def _nettoyer_nom(nom: str) -> str:
 # --------------------------------------------------------------------------------------------- chaîne
 def chaine(nom: str) -> dict:
     nom = _nettoyer_nom(nom)
-    if not nom:
+    if not nom.lstrip("@"):
         raise ErreurYouTube("quelle chaîne ? donnez son nom ou son @")
     return _chaine_api(nom) if source() == "api" else _chaine_ytdlp(nom)
 
@@ -120,7 +121,7 @@ def _chaine_ytdlp(nom: str) -> dict:
             except Exception:
                 info = {}
         if not info.get("channel_id"):
-            recherche = _ytdlp(f"https://www.youtube.com/results?search_query={nom.lstrip('@')}&sp=EgIQAg%253D%253D", extract_flat=True)
+            recherche = _ytdlp(f"https://www.youtube.com/results?search_query={quote_plus(nom.lstrip('@'))}&sp=EgIQAg%253D%253D", extract_flat=True)
             entree = next((e for e in recherche.get("entries") or [] if e.get("channel_id")), None)
             if not entree:
                 raise ErreurYouTube(f"aucune chaîne trouvée pour « {nom} »")
