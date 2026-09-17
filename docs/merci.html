@@ -56,7 +56,7 @@
         if (j.produit === "source") {
           c.innerHTML = `<p>Merci pour votre achat. Voici le code source complet de Jarvis, en archive zip.</p>
             <a class="bouton" href="${PASSERELLE}/source?session_id=${encodeURIComponent(session)}">Télécharger Jarvis-Source.zip</a>
-            <p class="note">Ce lien reste valable : gardez cette page dans vos favoris pour retélécharger. Licence libre, usage commercial compris.
+            <p class="note">Ce lien reste valable : gardez cette page dans vos favoris pour retélécharger. Licence AGPL v3 ; licence commerciale sur demande.
             Le README explique l'installation en cinq lignes ; ngrok peut afficher un écran « Visit Site » avant le téléchargement, cliquez-le.</p>`;
         } else if (j.produit === "don") {
           const k = j.cagnotte || {};

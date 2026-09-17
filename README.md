@@ -4,9 +4,15 @@ Un assistant vocal local façon Iron Man. Il écoute le micro en permanence, se 
 
 ## Licence et prix
 
-Jarvis est gratuit, et son code aussi : licence MIT, usage commercial compris. Le code est ici même
-(https://github.com/LeDevFouYT/jarvis). La seule chose payante est **Jarvis Cloud**, pour les machines sans carte graphique
-suffisante : le cerveau tourne alors sur la machine de l'auteur, facturé à la minute de calcul.
+Jarvis est gratuit, et son code aussi : **licence AGPL v3**. Vous pouvez l'utiliser chez vous autant que vous voulez, le
+modifier, le partager, le forker. La seule condition : si vous le distribuez ou le proposez en ligne à d'autres personnes,
+votre version doit être publiée sous la même licence. Le code est ici même (https://github.com/LeDevFouYT/jarvis).
+
+Pour l'intégrer à un produit **sans publier votre code**, ou pour le revendre, il existe une licence commerciale :
+voir [LICENCE-COMMERCIALE.md](LICENCE-COMMERCIALE.md). Les versions jusqu'à v1.0.18 comprises étaient sous MIT et le restent.
+
+La seule chose payante est **Jarvis Cloud**, pour les machines sans carte graphique suffisante : le cerveau tourne alors
+sur la machine de l'auteur, facturé à la minute de calcul.
 
 ## Ce qu'il faut
 

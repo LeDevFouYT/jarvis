@@ -1,6 +1,6 @@
 """Prépare l'arbre du code public (dépôt LeDevFouYT/jarvis) à partir du dépôt privé.
 
-Le code de Jarvis est gratuit et public (licence MIT) ; restent privés le serveur de paiement (`passerelle/`),
+Le code de Jarvis est gratuit et public (licence AGPL v3, licence commerciale en option) ; restent privés le serveur de paiement (`passerelle/`),
 les notes de travail (`CLAUDE.md`), la configuration personnelle (`config.json`) et l'action de publication.
 Appelé par l'action GitHub à chaque version, ou à la main :
 

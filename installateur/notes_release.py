@@ -17,7 +17,7 @@ PIED = """
 
 - **Nouveau** : téléchargez `Jarvis-Installateur.exe` ci-dessous et lancez-le. Il examine votre PC et installe tout, sans droits administrateur.
 - **Déjà installé** : rien à faire, Jarvis se met à jour tout seul au prochain lancement. Vos réglages, souvenirs et fichiers ne sont jamais touchés.
-- **Développeur** : le code est juste au-dessus, licence MIT.
+- **Développeur** : le code est juste au-dessus, licence AGPL v3 (licence commerciale sur demande).
 """
 
 
