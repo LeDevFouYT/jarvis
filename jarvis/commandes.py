@@ -22,7 +22,12 @@ COMMANDES = {
     "titre_monsieur": [r"\bappelle[- ]moi monsieur\b", r"\bje suis un homme\b", r"\bdis[- ]moi monsieur\b", r"\bc'?est monsieur\b"],
     "souvenirs_liste": [r"\bqu'?est[- ]ce que tu sais (de|sur) moi\b", r"\bque sais[- ]tu (de|sur) moi\b",
                         r"\bqu'?est[- ]ce que vous savez (de|sur) moi\b", r"\bce que tu sais de moi\b",
-                        r"\btes souvenirs sur moi\b", r"\bwhat do you know about me\b", r"\bmontre[- ]moi tes souvenirs\b"],
+                        r"\btes souvenirs sur moi\b", r"\bwhat do you know about me\b",
+                        # « montre-moi ta mémoire », « tu peux me montrer tes souvenirs ? », « ouvre ta mémoire » (17/09)
+                        r"\b(montre|montrer|montrez|affiche|afficher|ouvre|ouvrir|voir)[- ](moi |me )?(tes|ta|vos|votre) (souvenirs|memoire)\b",
+                        r"\bme (montrer|montres?|afficher) (tes|ta|vos|votre) (souvenirs|memoire)\b",
+                        r"\bce que tu as retenu( (de|sur) moi)?\s*[?.!]*$", r"\bqu'?est[- ]ce que tu as retenu\b",
+                        r"\bde quoi tu te souviens\b", r"\btu te souviens de quoi\b"],
     "annuler": [r"^(jarvis[,.]?\s*)?annule( le rangement| ca| ce rangement| le dernier rangement)?[.! ]*$",
                 r"\bremets? (tout )?(comme avant|en place)\b", r"\bdefais le rangement\b"],
 }

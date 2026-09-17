@@ -32,6 +32,13 @@ def construire(version: str, notes: str = "") -> dict:
     shutil.copy2(RACINE / "installateur" / "parametres.json", CHARGE / "parametres.json")
     (CHARGE / "version.json").write_text(json.dumps({"version": version, "date": time.strftime("%Y-%m-%d"), "notes": notes},
                                                     ensure_ascii=False, indent=2), encoding="utf-8")
+    # garde-fou : rien de personnel dans ce qui est livré (même liste que le code public)
+    from source_publique import INTERDITS
+    fautes = [f"{f.relative_to(CHARGE)} : {mot}" for f in CHARGE.rglob("*")
+              if f.is_file() and f.suffix in (".py", ".json", ".md", ".txt", ".bat", ".js", ".html", ".css", ".example")
+              for mot in INTERDITS if mot in f.read_text(encoding="utf-8", errors="ignore")]
+    if fautes:
+        raise SystemExit("Paquet refusé, contenu personnel détecté :\n  " + "\n  ".join(fautes))
     # le code livré en bytecode seulement
     if not compileall.compile_dir(str(CHARGE / "jarvis"), quiet=1, legacy=True, force=True):
         raise SystemExit("compilation échouée")

@@ -95,6 +95,21 @@ def epurer_titre(phrase: str, deja: bool) -> tuple[str, bool]:
     return nouveau, True
 
 
+TITRE_ESPACEMENT = 4       # au plus un « monsieur » toutes les 4 réponses
+
+
+def titre_une_fois(texte: str, deja: bool) -> tuple[str, bool]:
+    """La réponse entière passée phrase par phrase dans epurer_titre ; renvoie (texte, le titre a-t-il été gardé)."""
+    phrases, garde = [], False
+    for p in re.split(r"(?<=[.!?…])\s+", texte):
+        avant = deja
+        p, deja = epurer_titre(p, deja)
+        garde = garde or (not avant and deja)
+        if p:
+            phrases.append(p)
+    return " ".join(phrases), garde
+
+
 def question_augmentee(texte: str, langue: str = "fr", souvenirs: list[dict] | None = None) -> str:
     """La question telle que le cerveau la reçoit : souvenirs utiles et langue de réponse ajoutés après."""
     annexes = []
@@ -164,6 +179,7 @@ class Cerveau:
         self.tours_depuis_souvenirs = 0
         self.stop = threading.Event()          # une interruption : la génération en cours s'arrête tout de suite
         self.flux = None                       # la réponse Ollama en cours de lecture, pour la couper sans attendre
+        self.tour_titre = -TITRE_ESPACEMENT    # le dernier tour où « monsieur / madame » a été dit
         self.derniere_mesure = {}
 
     def interrompre(self):
@@ -308,11 +324,15 @@ class Cerveau:
         with self.verrou:
             self.stop.clear()
             systeme = {"role": "system", "content": personnage()}
+            debut = len(self.historique)
             self.historique.append({"role": "user", "content": question_augmentee(texte, langue, souvenirs)})
             # L'historique garde les appels d'outils et leurs résultats : sans eux, le modèle ne voit que des
             # réponses « sorties de nulle part » et se met à imiter ce style en inventant les chiffres.
             messages = [systeme] + self._recents()
-            titre_dit = {"deja": False}
+            # « monsieur » une fois de temps en temps, pas à chaque réponse (vu le 17/09 : « il m'appelle monsieur à
+            # chaque phrase ») : s'il a été dit dans l'une des TITRE_ESPACEMENT dernières réponses, il est retiré.
+            recent = self.tours - self.tour_titre < TITRE_ESPACEMENT
+            titre_dit = {"deja": recent, "initial": recent}
 
             def sur_phrase_epuree(p):
                 p, titre_dit["deja"] = epurer_titre(p, titre_dit["deja"])
@@ -349,9 +369,9 @@ class Cerveau:
                         if _echo_d_outil(contenu) or not contenu:
                             contenu = (relance.get("content") or "").strip()
                         message = {"role": "assistant", "content": contenu}
-                    if parle and contenu and (retenue or portillon.echo):
+                    if parle and contenu and (retenue or portillon.echo) and not self.stop.is_set():
                         parle(contenu)
-                elif retenue and parle and contenu:
+                elif retenue and parle and contenu and not self.stop.is_set():
                     parle(contenu)
                 if _echo_d_outil(contenu):
                     contenu = ""
@@ -397,9 +417,22 @@ class Cerveau:
                 if decoupeur:
                     decoupeur.ajouter(texte_boucle)
 
-            if decoupeur and not self.stop.is_set():
+            if self.stop.is_set():
+                # Coupé par la personne (elle a repris la parole) : le bout de réponse n'est ni rendu ni gardé. Vu en
+                # direct le 17/09 : « Oui, monsieur. », début d'une réponse coupée, entrait dans l'historique ; le modèle
+                # l'imitait ensuite (« tu m'entends ? » -> « Oui, monsieur. ») et n'appelait plus l'outil demandé.
+                if any(m.get("role") == "tool" for m in self.historique[debut:]):
+                    self.historique.append({"role": "assistant", "content": "(réponse interrompue : la personne a repris la parole)"})
+                else:
+                    del self.historique[debut:]
+                self.dernier_echange = time.time()
+                return ""
+            if decoupeur:
                 decoupeur.terminer()
-            reponse =" ".join(r for r in reponse_totale if r).strip() or ("…" if langue == "en" else f"Je n'ai rien à répondre, {TITRE}.")
+            reponse = " ".join(r for r in reponse_totale if r).strip() or ("…" if langue == "en" else f"Je n'ai rien à répondre, {TITRE}.")
+            reponse, titre_garde = titre_une_fois(reponse, titre_dit["initial"])
+            if titre_garde:
+                self.tour_titre = self.tours
             self.historique.append({"role": "assistant", "content": reponse})
             self.tours += 1
             self.tours_depuis_souvenirs += 1
