@@ -9,6 +9,7 @@ identique d'un tour à l'autre, sinon Ollama la relit en entier (976 ms au lieu 
 - `rechauffer()` au démarrage et après tout appel annexe, pour que le cache d'Ollama contienne déjà la consigne."""
 import json
 import re
+import socket
 import threading
 import time
 from datetime import datetime
@@ -161,12 +162,20 @@ class Cerveau:
         self.verrou = threading.Lock()
         self.dernier_echange = 0.0
         self.tours_depuis_souvenirs = 0
-        self.stop = threading.Event()          # une interruption : la génération en cours s'arrête au prochain jeton
+        self.stop = threading.Event()          # une interruption : la génération en cours s'arrête tout de suite
+        self.flux = None                       # la réponse Ollama en cours de lecture, pour la couper sans attendre
         self.derniere_mesure = {}
 
     def interrompre(self):
-        """La personne a repris la parole : la réponse en cours s'arrête, la nouvelle question passera juste après."""
+        """La personne a repris la parole : la réponse en cours s'arrête, la nouvelle question passera juste après.
+        Le flux est coupé net : attendre le jeton suivant coûtait plus d'une seconde quand la carte graphique est
+        occupée par autre chose (vu le 17/09, un jeu ouvert : 1054 ms)."""
         self.stop.set()
+        flux = self.flux
+        try:
+            flux.raw._connection.sock.shutdown(socket.SHUT_RDWR)
+        except Exception:
+            pass                                # pas de flux en cours, ou déjà fermé : le drapeau suffit
 
     # --- chargement en VRAM ----------------------------------------------
     def _options(self) -> dict:
@@ -259,22 +268,31 @@ class Cerveau:
                     sur_morceau(texte)
                 return {"role": "assistant", "content": texte}
             r.raise_for_status()
-            for ligne in r.iter_lines():
+            self.flux = r
+            try:
                 if self.stop.is_set():
-                    break
-                if not ligne:
-                    continue
-                j = json.loads(ligne)
-                m = j.get("message") or {}
-                if m.get("content"):
-                    contenu += m["content"]
-                    if sur_morceau:
-                        sur_morceau(m["content"])
-                if m.get("tool_calls"):
-                    appels.extend(m["tool_calls"])
-                if j.get("done"):
-                    self.derniere_mesure = {k: j.get(k) for k in ("prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration")}
-                    break
+                    return {"role": "assistant", "content": ""}
+                for ligne in r.iter_lines():
+                    if self.stop.is_set():
+                        break
+                    if not ligne:
+                        continue
+                    j = json.loads(ligne)
+                    m = j.get("message") or {}
+                    if m.get("content"):
+                        contenu += m["content"]
+                        if sur_morceau:
+                            sur_morceau(m["content"])
+                    if m.get("tool_calls"):
+                        appels.extend(m["tool_calls"])
+                    if j.get("done"):
+                        self.derniere_mesure = {k: j.get(k) for k in ("prompt_eval_count", "prompt_eval_duration", "eval_count", "eval_duration")}
+                        break
+            except (requests.RequestException, OSError, ValueError, AttributeError):
+                if not self.stop.is_set():
+                    raise                       # une vraie panne ; sinon c'est interrompre() qui a coupé le flux
+            finally:
+                self.flux = None
         message = {"role": "assistant", "content": contenu}
         if appels:
             message["tool_calls"] = appels
