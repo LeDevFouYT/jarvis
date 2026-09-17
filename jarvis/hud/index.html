@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis</title>
+<link rel="stylesheet" href="/hud/style.css">
+<!-- three.js est servi depuis jarvis/hud/vendor (version fixée, voir VERSION.txt) : aucun chargement Internet -->
+<script type="importmap">{ "imports": { "three": "/hud/vendor/three.module.min.js" } }</script>
+</head>
+<body class="repos">
+<canvas id="scene"></canvas>
+<div id="reacteur-css"></div>
+<div id="trame"></div>
+
+<header id="entete">
+  <div class="logo">J.A.R.V.I.S.<small id="sous-titre">salle de briefing</small></div>
+  <div id="horloge">--:--:--<small id="date"></small></div>
+  <div id="astuce"><kbd>espace</kbd> parler <kbd>M</kbd> discret <kbd>P</kbd> panneaux <kbd>F</kbd> plein écran <kbd>échap</kbd> taire</div>
+</header>
+
+<section id="gauche" class="colonne">
+  <i class="h-coin hg"></i><i class="h-coin hd"></i><i class="h-coin bg"></i><i class="h-coin bd"></i>
+  <h2><b>transcription</b><span id="compte-echanges"></span></h2>
+  <div id="transcription"></div>
+  <div class="h-balayage"></div>
+</section>
+
+<section id="droite" class="colonne">
+  <i class="h-coin hg"></i><i class="h-coin hd"></i><i class="h-coin bg"></i><i class="h-coin bd"></i>
+  <h2><b>outils</b><span id="compte-outils"></span></h2>
+  <div id="outils"></div>
+  <div class="h-balayage"></div>
+</section>
+
+<div id="mode">en veille</div>
+<div id="panneaux"></div>
+<div id="discret-texte"><small>jarvis · mode discret</small><span></span></div>
+
+<form id="saisie" autocomplete="off">
+  <input id="texte" placeholder="Ou écrivez ici…">
+  <button type="submit">Envoyer</button>
+  <button type="button" id="taire">Taire</button>
+  <button type="button" id="oublier">Oublier</button>
+  <button type="button" id="memoire" title="La constellation des souvenirs">Mémoire · <span id="nb-souvenirs">0</span></button>
+  <button type="button" id="reglages" title="Personnalité, conversation, sentinelle, clés et voix">Réglages</button>
+  <button type="button" id="soutenir" title="Faire un don pour les prochaines versions" hidden>Soutenir</button>
+</form>
+
+<footer id="barre" class="holo-barre">
+  <div>VRAM <b id="vram">…</b><div class="jauge"><i id="j-vram"></i></div>
+    <div class="voyants"><span id="v-cerveau">cerveau</span><span id="v-whisper">whisper</span><span id="v-micro">micro</span><span id="v-voix">voix</span></div></div>
+  <div>modèle chargé <b id="charges">…</b></div>
+  <div id="cerveau-mode">cerveau <b id="cerveau">…</b></div>
+  <div>voix <b id="voix">…</b><span class="sous-info">personnalité <em id="personnalite">…</em></span></div>
+  <div id="reponse-eclair" title="Du silence après votre phrase au premier son de Jarvis">réponse éclair <b id="latence">–</b><span class="sous-info" id="latence-detail"></span></div>
+  <div id="compteur">requêtes sorties sur internet <b id="sorties">0</b><span class="sous-info" id="connexions"></span></div>
+</footer>
+
+<div id="voile"><img alt=""></div>
+<div id="boot"><div>initialisation de la salle de briefing</div><div class="ligne"></div>
+  <ol><li style="animation-delay:.2s">réacteur</li><li style="animation-delay:.5s">projecteurs holographiques</li>
+      <li style="animation-delay:.8s">liaison avec le cerveau</li><li style="animation-delay:1.1s">oreilles et voix</li></ol></div>
+<div id="extinction">extinction des systèmes</div>
+<div id="ips"></div>
+
+<script type="module" src="/hud/hud.js"></script>
+</body>
+</html>

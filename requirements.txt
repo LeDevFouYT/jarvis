@@ -1,0 +1,16 @@
+# Dependances du venv Jarvis. Tenu a jour a chaque brique ajoutee.
+fastapi
+uvicorn[standard]
+python-multipart
+requests
+pillow
+faster-whisper
+nvidia-cublas-cu12
+nvidia-cudnn-cu12
+kokoro-onnx
+psutil
+pycaw
+sounddevice
+openwakeword
+yt-dlp
+tzdata

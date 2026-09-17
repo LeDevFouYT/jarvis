@@ -1,0 +1,185 @@
+{
+  "serveur": {
+    "hote": "127.0.0.1",
+    "port": 8765,
+    "ouvrir_navigateur": true
+  },
+  "personnage": {
+    "titre": "monsieur",
+    "personnalite": "majordome"
+  },
+  "ollama": {
+    "url": "http://127.0.0.1:11434"
+  },
+  "cerveau": {
+    "mode": "local",
+    "modele": "qwen3:14b",
+    "think": false,
+    "num_ctx": 8192,
+    "temperature": 0.0,
+    "keep_alive": "30m",
+    "cloud": {
+      "url": "",
+      "annuaire": "",
+      "modele": "",
+      "jeton": ""
+    }
+  },
+  "vision": {
+    "modele": "gemma3:4b",
+    "keep_alive": 0,
+    "largeur_max": 1280
+  },
+  "oreilles": {
+    "actif": true,
+    "peripherique": null,
+    "mot": "hey_jarvis",
+    "seuil": 0.5,
+    "silence_s": 0.7,
+    "max_s": 15,
+    "attente_parole_s": 4,
+    "modele": "large-v3-turbo",
+    "appareil": "cuda",
+    "calcul": "float16",
+    "mode_phrase": true,
+    "silence_phrase_s": 0.6,
+    "seuil_parole": 0.85,
+    "anticipation_s": 0.25,
+    "beam": 1,
+    "langues": [
+      "fr",
+      "en"
+    ],
+    "conversation_continue": {
+      "actif": true,
+      "secondes": 8
+    },
+    "interruption": {
+      "actif": true,
+      "seuil_vad": 0.85,
+      "seuil_niveau": 0.012,
+      "duree_min_s": 0.35
+    }
+  },
+  "voix": {
+    "moteur": "local",
+    "kokoro_voix": "ff_siwis",
+    "kokoro_vitesse": 1.0,
+    "elevenlabs_voix": "",
+    "elevenlabs_modele": "eleven_multilingual_v2",
+    "peripherique_sortie": null,
+    "cache": true,
+    "kokoro_voix_en": "bm_george"
+  },
+  "comfyui": {
+    "url": "http://127.0.0.1:8188",
+    "workflow": "zimage.json",
+    "lanceur": "C:/ComfyUI/start_comfy.bat",
+    "miniatures": {
+      "largeur": 1024,
+      "hauteur": 576,
+      "pas": 8
+    }
+  },
+  "fichiers": {
+    "racines": [
+      "~/Desktop",
+      "~/Documents",
+      "~/Downloads",
+      "~/Videos",
+      "~/Pictures",
+      "~/Music"
+    ],
+    "exclure": [
+      "node_modules",
+      ".venv",
+      "venv",
+      ".git",
+      "__pycache__",
+      "$RECYCLE.BIN",
+      "System Volume Information",
+      "site-packages",
+      ".cache",
+      "AppData"
+    ],
+    "rafraichir_minutes": 10
+  },
+  "applications": {
+    "comfyui": "C:/ComfyUI/start_comfy.bat",
+    "explorateur": "explorer.exe",
+    "bloc-notes": "notepad.exe",
+    "calculatrice": "calc.exe",
+    "terminal": "wt.exe",
+    "navigateur": "https://www.google.fr",
+    "telechargements": "~/Downloads",
+    "jarvis": "."
+  },
+  "rappels": {
+    "telegram": true
+  },
+  "telegram": {
+    "actif": false,
+    "commandes": true,
+    "api": "https://api.telegram.org",
+    "attente_s": 25,
+    "reponse_vocale": true
+  },
+  "chemins": {
+    "ffmpeg": "ffmpeg",
+    "comfyui": "C:/ComfyUI"
+  },
+  "maison": {
+    "actif": false,
+    "passerelle": "",
+    "modeles": [
+      "qwen3:14b",
+      "gemma3:4b"
+    ]
+  },
+  "service_cloud": {
+    "actif": false,
+    "port": 8791,
+    "domaine": "",
+    "prix_minute_eur": 0.02,
+    "plafond_minutes_jour": 120,
+    "lien_paiement": "",
+    "keep_alive": "2m"
+  },
+  "cagnotte": {
+    "url": "https://ledevfouyt.github.io/jarvis/cagnotte.json"
+  },
+  "mise_a_jour": {
+    "auto": true,
+    "manifeste": "https://github.com/LeDevFouYT/jarvis/releases/latest/download/version.json"
+  },
+  "memoire": {
+    "actif": true,
+    "modele_plongements": "qwen3-embedding:0.6b",
+    "plongements_sur_processeur": true,
+    "seuil_similarite": 0.39,
+    "ecart_au_meilleur": 0.08,
+    "seuil_oubli": 0.5,
+    "maximum_par_question": 4,
+    "session_inactivite_min": 10,
+    "themes": true
+  },
+  "sentinelle": {
+    "actif": true,
+    "intervalle_s": 30,
+    "temperature_max": 85,
+    "disque_min_go": 10,
+    "disque_min_pourcent": 2,
+    "rappel_avance_min": 5,
+    "repos_min": 10,
+    "disque_taille_min_go": 16
+  },
+  "webcam": {
+    "peripherique": ""
+  },
+  "youtube": {
+    "ma_chaine": "",
+    "concurrents": [],
+    "quota_jour": 10000,
+    "juger_phrases": true
+  }
+}

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis Cloud, merci</title>
+<meta name="robots" content="noindex">
+<style>
+  :root { --cyan: #5fe3ff; --cyan2: #1a7d99; --cyan3: #0d3a4a; --texte: #cfeefa; --dim: #6fa0b3; --ambre: #ffb454; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #000 radial-gradient(ellipse at top, #071626 0%, #000 70%); color: var(--texte);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 18px; line-height: 1.55; }
+  main { max-width: 760px; margin: 0 auto; padding: 48px 24px 80px; }
+  h1 { color: var(--cyan); letter-spacing: .4em; font-size: 22px; text-shadow: 0 0 22px rgba(95,227,255,.6); margin: 0 0 24px; }
+  .carte { border: 1px solid var(--cyan2); padding: 24px 28px; box-shadow: 0 0 40px rgba(95,227,255,.12); margin: 18px 0; }
+  .jeton { font-size: 22px; background: #0f2233; padding: 14px; letter-spacing: .05em; user-select: all; word-break: break-all; margin: 12px 0; }
+  .bouton { display: inline-block; padding: 12px 22px; border: 1px solid var(--cyan); color: var(--cyan); text-decoration: none;
+    letter-spacing: .2em; text-transform: uppercase; font-size: 13px; margin: 10px 12px 0 0; }
+  .attente { color: var(--ambre); }
+  .note { color: var(--dim); font-size: 15px; }
+  code { background: #0f2233; padding: 2px 6px; border-radius: 3px; }
+  ol { padding-left: 22px; } li { margin: 8px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>J.A.R.V.I.S. CLOUD</h1>
+  <div class="carte" id="contenu"><p>Un instant, je récupère votre jeton…</p></div>
+  <div class="carte">
+    <b>Comment utiliser Jarvis</b>
+    <ol>
+      <li>Téléchargez et lancez <a class="bouton" style="margin:0 6px" href="https://github.com/LeDevFouYT/jarvis/releases/latest/download/Jarvis-Installateur.exe">l'installateur</a></li>
+      <li>Quand il propose le mode cloud, collez votre jeton dans le champ prévu, puis « Installer ». Déjà installé ?
+        Ouvrez le fichier <code>.secrets</code> du dossier Jarvis et complétez la ligne <code>CLOUD_TOKEN=</code>.</li>
+      <li>Double-cliquez <b>Jarvis</b> sur le Bureau, dites « Hey Jarvis », posez votre question.</li>
+    </ol>
+    <p class="note">Votre crédit : 250 minutes de calcul, plafond de 120 minutes par jour. Le cerveau distant dépend de la
+    machine qui l'héberge : quand elle est éteinte, votre Jarvis vous le dit et continue de faire le reste en local.
+    Un nouvel achat avec le même e-mail recharge le même compte et le même jeton.</p>
+  </div>
+</main>
+<script>
+  const PASSERELLE = "https://spiral-precise-capture.ngrok-free.dev";
+  const params = new URLSearchParams(location.search);
+  const session = params.get("session_id"), produit = params.get("produit") || "cloud";
+  const c = document.getElementById("contenu");
+  if (produit !== "cloud") document.querySelectorAll("main .carte")[1].style.display = "none";
+  let essais = 0;
+  async function chercher() {
+    essais++;
+    if (!session) { c.innerHTML = "<p>Paiement introuvable : ouvrez cette page depuis le lien de confirmation de Stripe.</p>"; return; }
+    try {
+      const r = await fetch(PASSERELLE + "/merci?format=json&session_id=" + encodeURIComponent(session), { headers: { "ngrok-skip-browser-warning": "1" } });
+      if (r.status === 200) {
+        const j = await r.json();
+        if (j.produit === "source") {
+          c.innerHTML = `<p>Merci pour votre achat. Voici le code source complet de Jarvis, en archive zip.</p>
+            <a class="bouton" href="${PASSERELLE}/source?session_id=${encodeURIComponent(session)}">Télécharger Jarvis-Source.zip</a>
+            <p class="note">Ce lien reste valable : gardez cette page dans vos favoris pour retélécharger. Licence libre, usage commercial compris.
+            Le README explique l'installation en cinq lignes ; ngrok peut afficher un écran « Visit Site » avant le téléchargement, cliquez-le.</p>`;
+        } else if (j.produit === "don") {
+          const k = j.cagnotte || {};
+          c.innerHTML = `<p>Merci du fond du cœur pour votre don de <b>${j.montant.toLocaleString("fr", { style: "currency", currency: "EUR" })}</b>.</p>
+            <p>La cagnotte est maintenant à <b>${(k.total || 0).toLocaleString("fr", { style: "currency", currency: "EUR" })}</b>${k.prochain ? `, prochain objectif ${k.prochain.montant} € : « ${k.prochain.titre} »` : ""}.</p>`;
+        } else {
+          c.innerHTML = `<p>Merci. Votre compte <b>${j.email}</b> dispose de <b>${j.minutes} minutes</b> de cerveau distant.</p>
+            <p>Votre jeton d'accès, à coller dans l'installateur :</p><div class="jeton">${j.jeton}</div>
+            <p class="note">Gardez-le précieusement : il ne sera plus affiché ici. Si vous le perdez, écrivez-nous avec l'adresse e-mail du paiement.</p>`;
+        }
+        return;
+      }
+      if (r.status === 202) { c.innerHTML = "<p class='attente'>Paiement en cours de confirmation, nouvel essai dans quelques secondes…</p>"; }
+      else { c.innerHTML = "<p class='attente'>La machine qui distribue les jetons ne répond pas pour l'instant. Votre paiement est enregistré : gardez cette page ouverte ou revenez plus tard, votre jeton vous attend.</p>"; }
+    } catch (e) {
+      c.innerHTML = "<p class='attente'>La machine qui distribue les jetons est éteinte pour le moment. Votre paiement est enregistré : gardez cette page ouverte ou revenez plus tard avec ce même lien, votre jeton vous attend.</p>";
+    }
+    setTimeout(chercher, essais < 20 ? 8000 : 60000);
+  }
+  chercher();
+</script>
+</body>
+</html>

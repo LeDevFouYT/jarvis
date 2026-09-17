@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis, l'assistant vocal local</title>
+<meta name="description" content="Jarvis : un assistant vocal façon Iron Man qui tourne sur votre PC. Sans carte graphique, Jarvis Cloud à 5 € pour 250 minutes.">
+<style>
+  :root { --cyan: #5fe3ff; --cyan2: #1a7d99; --cyan3: #0d3a4a; --texte: #cfeefa; --dim: #6fa0b3; --ambre: #ffb454; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #000 radial-gradient(ellipse at top, #071626 0%, #000 70%); color: var(--texte);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif; font-size: 18px; line-height: 1.55; }
+  main { max-width: 860px; margin: 0 auto; padding: 48px 24px 80px; }
+  h1 { color: var(--cyan); letter-spacing: .4em; font-size: 26px; text-shadow: 0 0 22px rgba(95,227,255,.6); margin: 0 0 6px; }
+  .sous { color: var(--dim); letter-spacing: .25em; text-transform: uppercase; font-size: 13px; margin-bottom: 36px; }
+  h2 { color: var(--cyan); font-size: 15px; letter-spacing: .3em; text-transform: uppercase; border-bottom: 1px solid var(--cyan3); padding-bottom: 8px; margin: 44px 0 16px; }
+  .carte { border: 1px solid var(--cyan2); padding: 24px 28px; box-shadow: 0 0 40px rgba(95,227,255,.12); margin: 18px 0; }
+  .bouton { display: inline-block; padding: 14px 26px; border: 1px solid var(--cyan); color: var(--cyan); text-decoration: none;
+    letter-spacing: .2em; text-transform: uppercase; font-size: 14px; margin: 10px 12px 0 0; transition: all .2s; }
+  .bouton:hover { background: rgba(95,227,255,.1); box-shadow: 0 0 20px rgba(95,227,255,.3); }
+  .bouton.secondaire { border-color: var(--cyan2); color: var(--texte); }
+  .prix { font-size: 44px; color: var(--cyan); font-weight: 600; text-shadow: 0 0 22px rgba(95,227,255,.5); }
+  .prix small { font-size: 18px; color: var(--dim); font-weight: 400; margin-left: 10px; }
+  ol { padding-left: 22px; } li { margin: 8px 0; }
+  .etat { color: var(--dim); font-size: 15px; letter-spacing: .1em; }
+  .etat b { color: var(--cyan); } .etat b.off { color: var(--ambre); }
+  .note { color: var(--dim); font-size: 15px; }
+  code { background: #0f2233; padding: 2px 6px; border-radius: 3px; color: var(--texte); }
+  @media (max-width: 600px) { body { font-size: 16px; } h1 { font-size: 20px; } .prix { font-size: 34px; } }
+  /* les deux façons d'avoir Jarvis */
+  .voies { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 18px 0; }
+  .voies .carte { margin: 0; display: flex; flex-direction: column; }
+  .voies .carte p { flex: 1; }
+  .voies .pour { color: var(--ambre); font-size: 13px; letter-spacing: .22em; text-transform: uppercase; margin: 0 0 10px; }
+  .voies h3 { margin: 0 0 8px; color: var(--cyan); font-size: 21px; letter-spacing: .04em; }
+  .voies .gratuit { display: inline-block; border: 1px solid var(--cyan2); color: var(--cyan); font-size: 12px;
+    letter-spacing: .2em; padding: 3px 10px; margin-left: 8px; vertical-align: 3px; }
+  @media (max-width: 700px) { .voies { grid-template-columns: 1fr; } }
+
+  /* le cadran des dons, tout en haut */
+  #cadran { display: flex; align-items: center; gap: 18px; border: 1px solid var(--cyan2); padding: 12px 18px; margin: 0 0 30px;
+    background: rgba(95,227,255,.04); box-shadow: 0 0 30px rgba(95,227,255,.12); }
+  #cadran svg { width: 64px; height: 64px; flex: none; }
+  #cadran .texte { flex: 1; min-width: 0; }
+  #cadran b { color: var(--cyan); font-size: 22px; text-shadow: 0 0 14px rgba(95,227,255,.5); }
+  #cadran small { display: block; color: var(--dim); font-size: 13px; letter-spacing: .05em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #cadran .bouton { margin: 0; padding: 10px 16px; font-size: 12px; }
+  @media (max-width: 600px) { #cadran { flex-wrap: wrap; } #cadran .bouton { width: 100%; text-align: center; } }
+</style>
+</head>
+<body>
+<main>
+  <div id="cadran">
+    <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="27" fill="none" stroke="#0f2233" stroke-width="6"/>
+      <circle id="cadran-arc" cx="32" cy="32" r="27" fill="none" stroke="#5fe3ff" stroke-width="6" stroke-linecap="round"
+        stroke-dasharray="169.6" stroke-dashoffset="169.6" transform="rotate(-90 32 32)" style="transition:stroke-dashoffset .9s;filter:drop-shadow(0 0 6px rgba(95,227,255,.7))"/>
+      <text id="cadran-pct" x="32" y="37" text-anchor="middle" fill="#cfeefa" font-size="14" font-family="Segoe UI, sans-serif">0 %</text></svg>
+    <div class="texte"><b id="cadran-total">Cagnotte</b><small id="cadran-objectif">les dons financent les prochaines versions</small></div>
+    <a class="bouton" href="https://donate.stripe.com/eVq28qa5Cg0S4MPdG408g02">Faire un don</a>
+  </div>
+
+  <h1>J.A.R.V.I.S.</h1>
+  <div class="sous">votre assistant vocal, sur votre PC</div>
+  <p style="font-size:21px">Vous lui parlez, il vous répond et il agit : ouvre vos applications et vos sites, cherche vos fichiers,
+  regarde votre écran, génère des images, prend des notes, vous rappelle des choses. Comme Jarvis dans Iron Man, chez vous. <b>Gratuit, et le code est ouvert.</b></p>
+
+  <h2>Deux façons d'avoir Jarvis, les deux gratuites</h2>
+  <div class="voies">
+    <div class="carte">
+      <p class="pour">Si vous ne savez pas coder</p>
+      <h3>L'installateur<span class="gratuit">0 €</span></h3>
+      <p>Un fichier à double-cliquer. Il vérifie votre machine, installe Python, Ollama, les modèles et Jarvis,
+      et pose un raccourci sur le bureau. Vous n'avez rien d'autre à faire.</p>
+      <a class="bouton" href="https://github.com/LeDevFouYT/jarvis/releases/latest/download/Jarvis-Installateur.exe">Télécharger Jarvis</a>
+      <p class="note">Windows 10 ou 11, sans droits administrateur. Comptez 20 minutes la première fois.
+      Ensuite Jarvis se met à jour tout seul à chaque lancement.</p>
+    </div>
+    <div class="carte">
+      <p class="pour">Si vous êtes développeur</p>
+      <h3>Le code source<span class="gratuit">0 €</span></h3>
+      <p>Tout Jarvis en Python, commenté en français, licence MIT : vous le lisez, le modifiez, le revendez si
+      vous voulez, sans rien demander à personne.</p>
+      <a class="bouton secondaire" href="https://github.com/LeDevFouYT/jarvis">Voir le code sur GitHub</a>
+      <p class="note"><code>git clone</code>, puis <code>installer.bat</code> et <code>lancer.bat</code>.
+      Le serveur de paiement du mode cloud n'est pas inclus.</p>
+    </div>
+  </div>
+  <p class="note"><b>Dans les deux cas, il vous faut une carte graphique NVIDIA</b> : 8 Go de mémoire vidéo minimum,
+  12 Go pour la version complète. L'installateur vérifie tout seul et vous le dit. Rien ne sort de votre PC.</p>
+
+  <h2>Pas de carte graphique ? Jarvis Cloud</h2>
+  <div class="carte">
+    <p>Le cerveau de Jarvis tourne alors sur notre machine, le reste chez vous. <b>5 € pour 250 minutes de calcul</b>,
+    c'est des milliers de réponses. Vous payez, vous recevez un jeton, vous le collez dans l'installateur (ou plus tard dans les Réglages de Jarvis), c'est parti.</p>
+    <div class="prix">5 €<small>= 250 minutes</small></div>
+    <p class="etat">Cerveau distant : <b id="etat">vérification…</b></p>
+    <a class="bouton" href="https://buy.stripe.com/5kQ14mgu0dSKenp9pO08g00">Acheter 5 € de crédit</a>
+    <a class="bouton secondaire" href="https://github.com/LeDevFouYT/jarvis/releases/latest/download/Jarvis-Installateur.exe">Télécharger Jarvis</a>
+    <p class="note">Plafond de 120 minutes par jour. Quand notre machine est éteinte, votre Jarvis vous le dit et fait le reste en local.</p>
+  </div>
+
+  <h2>Comment ça marche</h2>
+  <div class="carte">
+    <ol>
+      <li>Téléchargez et lancez <b>Jarvis-Installateur.exe</b>. Il examine votre machine.</li>
+      <li>Avec une carte : cliquez « Installer ». Sans carte : achetez le crédit, collez le jeton reçu, puis « Installer ».</li>
+      <li>Double-cliquez <b>Jarvis</b> sur le Bureau et dites « Hey Jarvis ».</li>
+    </ol>
+    <p class="note">« Hey Jarvis, dans quel état est la machine ? » · « Ouvre YouTube et cherche des vidéos de chats » ·
+    « Regarde mon écran et dis-moi ce que je fais » · « Dessine un phare breton sous l'orage » · « Rappelle-moi dans vingt minutes de sortir le pain ».</p>
+  </div>
+
+  <h2>Soutenir Jarvis</h2>
+  <div class="carte">
+    <p>Jarvis est fait par une seule personne. Chaque don finance la prochaine version.</p>
+    <div class="prix" id="cagnotte-total">…<small id="cagnotte-detail"></small></div>
+    <div style="height:6px;background:#0f2233;margin:10px 0 6px"><div id="cagnotte-barre" style="height:100%;width:0;background:linear-gradient(90deg,var(--cyan2),var(--cyan));box-shadow:0 0 10px rgba(95,227,255,.5);transition:width .8s"></div></div>
+    <p class="note" id="cagnotte-prochain">chargement de la cagnotte…</p>
+    <ul id="cagnotte-objectifs" class="note"></ul>
+    <a class="bouton" href="https://donate.stripe.com/eVq28qa5Cg0S4MPdG408g02">Faire un don</a>
+  </div>
+
+</main>
+<script>
+  const PASSERELLE = "https://spiral-precise-capture.ngrok-free.dev";
+  fetch(PASSERELLE + "/maison/etat", { headers: { "ngrok-skip-browser-warning": "1" } })
+    .then(r => r.json())
+    .then(j => { const e = document.getElementById("etat"); e.textContent = j.en_ligne ? "en ligne" : "hors ligne pour le moment"; e.className = j.en_ligne ? "" : "off"; })
+    .catch(() => { const e = document.getElementById("etat"); e.textContent = "hors ligne pour le moment"; e.className = "off"; });
+  // La cagnotte : d'abord le dernier état publié sur GitHub (toujours disponible), puis le chiffre en direct si la machine répond.
+  function montrerCagnotte(c, direct) {
+    document.getElementById("cagnotte-total").firstChild.textContent = c.total.toLocaleString("fr", { style: "currency", currency: "EUR" });
+    document.getElementById("cagnotte-detail").textContent = c.dons + (c.dons > 1 ? " dons" : " don") + (direct ? "" : c.mis_a_jour ? " · au " + new Date(c.mis_a_jour * 1000).toLocaleDateString("fr") : "");
+    document.getElementById("cagnotte-barre").style.width = c.progression + "%";
+    document.getElementById("cagnotte-prochain").textContent = c.prochain ? `Prochain objectif : ${c.prochain.montant} € pour « ${c.prochain.titre} »` : "Tous les objectifs sont atteints, merci.";
+    document.getElementById("cagnotte-objectifs").innerHTML = c.objectifs.map(o => `<li>${o.montant <= c.total ? "✔" : "○"} ${o.montant} € : ${o.titre}</li>`).join("");
+    // le cadran du haut
+    const pct = Math.min(100, c.progression || 0);
+    document.getElementById("cadran-arc").style.strokeDashoffset = (169.6 * (1 - pct / 100)).toFixed(1);
+    document.getElementById("cadran-pct").textContent = pct + " %";
+    document.getElementById("cadran-total").textContent = c.total.toLocaleString("fr", { style: "currency", currency: "EUR" }) + (c.prochain ? ` sur ${c.prochain.montant} €` : " récoltés");
+    document.getElementById("cadran-objectif").textContent = c.prochain ? `prochain objectif : ${c.prochain.titre}` : "tous les objectifs sont atteints, merci";
+  }
+  fetch("cagnotte.json?" + Date.now()).then(r => r.json()).then(c => montrerCagnotte(c, false)).catch(() => {});
+  fetch(PASSERELLE + "/cagnotte", { headers: { "ngrok-skip-browser-warning": "1" } }).then(r => r.json()).then(c => montrerCagnotte(c, true)).catch(() => {});
+</script>
+</body>
+</html>
