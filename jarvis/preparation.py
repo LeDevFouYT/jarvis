@@ -137,6 +137,49 @@ def telecharger_kokoro() -> bool:
     return True
 
 
+# --- mot de réveil ---------------------------------------------------------------------------------
+def telecharger_reveil(c: dict) -> bool:
+    """Les modèles d'openWakeWord (« Hey Jarvis », et ceux qui préparent le son) ne sont pas dans le paquet pip : ils
+    se téléchargent à part. Sur le PC de développement ils l'avaient été une fois à la main ; une installation neuve
+    n'avait donc pas de mot de réveil, et le micro ne démarrait pas (vu le 18/09 en installant pour de vrai)."""
+    try:
+        import openwakeword
+        from openwakeword.utils import download_models
+    except ImportError:
+        return False
+    mot = c.get("oreilles", {}).get("mot", "hey_jarvis")
+    modele = openwakeword.MODELS.get(mot, {}).get("model_path", "")
+    dossier = Path(openwakeword.__file__).parent / "resources" / "models"
+    nom = Path(modele).name.replace(".tflite", ".onnx") if modele else ""
+    utiles = [nom, "melspectrogram.onnx", "embedding_model.onnx", "silero_vad.onnx"]
+    if nom and all((dossier / f).exists() for f in utiles):
+        return True
+    _dire("Le mot de réveil « Hey Jarvis » manque : téléchargement (quelques Mo, une seule fois).")
+    try:
+        download_models([Path(nom).stem] if nom else [], target_directory=str(dossier))
+        return all((dossier / f).exists() for f in utiles)
+    except Exception as e:
+        _dire(f"Téléchargement du mot de réveil impossible ({type(e).__name__}) : le bouton Parler du HUD marche quand même.")
+        return False
+
+
+# --- runtime C++ ---------------------------------------------------------------------------------
+def runtime_cpp_present() -> bool:
+    """Whisper (ctranslate2) et la voix (onnxruntime) ont besoin de MSVCP140.dll. L'installateur le livre depuis la
+    v1.0.23 ; une installation plus ancienne, sur un Windows sans « Visual C++ Redistributable », était sourde et
+    muette avec une erreur incompréhensible : ici, la cause et le remède en clair."""
+    try:
+        import ctranslate2  # noqa: F401
+        import onnxruntime  # noqa: F401
+        return True
+    except ImportError as e:
+        if "DLL" not in str(e):
+            raise
+        _dire("Il manque un composant de Windows dont l'écoute et la voix ont besoin (Microsoft Visual C++ Redistributable).")
+        _dire("Installez-le depuis https://aka.ms/vs/17/release/vc_redist.x64.exe (Microsoft, gratuit), puis relancez Jarvis.")
+        return False
+
+
 # --- vérification avant lancement -------------------------------------------------------------
 def _reparer_cloud_force(c: dict) -> dict:
     """Jusqu'à la v1.0.20, l'installateur comparait la mémoire vidéo au Mo près : une carte « 8 Go » (8 188 Mo annoncés,
@@ -199,6 +242,9 @@ def verifier() -> int:
             telecharger_modele(c["ollama"]["url"], modele_memoire)
     if not telecharger_kokoro():
         return 1
+    if not runtime_cpp_present():
+        return 1
+    telecharger_reveil(c)
     _dire(f"Prêt : cerveau {c['cerveau']['modele']} ({c['cerveau'].get('mode', 'local')}), "
           f"vision {c['vision']['modele']}, voix {c['voix']['moteur']}.")
     return 0

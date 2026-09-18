@@ -884,7 +884,25 @@ def oublier():
 def lancer():
     import webbrowser
     import uvicorn
+    import socket
+    import urllib.request
     hote, port = CONFIG["serveur"]["hote"], CONFIG["serveur"]["port"]
+    with socket.socket() as s:
+        occupe = s.connect_ex((hote, port)) == 0
+    if occupe:
+        # Jarvis lancé deux fois (double-clic sur le raccourci alors qu'il tourne) : au lieu d'une erreur de port en
+        # anglais, on ouvre l'interface de celui qui tourne déjà. Un autre programme sur le port : on le dit.
+        try:
+            with urllib.request.urlopen(f"http://{hote}:{port}/etat", timeout=3) as r:
+                deja = "modele" in json.loads(r.read())
+        except Exception:
+            deja = False
+        if deja:
+            print("[Jarvis] Jarvis tourne déjà : j'ouvre son interface.", flush=True)
+            webbrowser.open(f"http://{hote}:{port}/?plein=1")
+            return
+        raise SystemExit(f"[Jarvis] Le port {port} est pris par un autre programme. Fermez-le, ou changez "
+                         f"« serveur.port » dans config.json, puis relancez Jarvis.")
     if CONFIG["serveur"].get("ouvrir_navigateur", True):
         threading.Timer(1.5, lambda: webbrowser.open(f"http://{hote}:{port}/?plein=1")).start()
     uvicorn.run(app, host=hote, port=port, log_level="warning")

@@ -49,10 +49,32 @@ def charger() -> float:
         if _kokoro is not None:
             return 0.0
         t = time.time()
+        import espeakng_loader
         from kokoro_onnx import Kokoro
+        from kokoro_onnx.config import EspeakConfig
+        espeak = EspeakConfig(data_path=chemin_sans_accent(espeakng_loader.get_data_path()))
         _kokoro = Kokoro(str(RACINE / "modeles" / "kokoro" / "kokoro-v1.0.onnx"),
-                         str(RACINE / "modeles" / "kokoro" / "voices-v1.0.bin"))
+                         str(RACINE / "modeles" / "kokoro" / "voices-v1.0.bin"), espeak_config=espeak)
         return time.time() - t
+
+
+def chemin_sans_accent(dossier: str) -> str:
+    """espeak-ng (la prononciation de Kokoro) lit son chemin de données en ANSI : sous « C:\\Users\\Jérôme\\… », il ne
+    trouvait rien et quittait tout le processus Jarvis (vu le 18/09, installation dans un dossier accentué). Le nom
+    court Windows (8.3) ne suffit pas : phonemizer fait `Path.resolve()`, qui rend le nom long, accents compris. Les
+    données (une vingtaine de Mo) sont donc copiées dans C:\\Users\\Public\\Jarvis, recopiées si elles changent."""
+    if dossier.isascii():
+        return dossier
+    import os
+    import shutil
+    from pathlib import Path
+    source = Path(dossier)
+    copie = Path(os.environ.get("PUBLIC", r"C:\Users\Public")) / "Jarvis" / source.name
+    temoin = "phontab"
+    if not (copie / temoin).exists() or (copie / temoin).stat().st_size != (source / temoin).stat().st_size:
+        shutil.rmtree(copie, ignore_errors=True)
+        shutil.copytree(source, copie)
+    return str(copie)
 
 
 def pret() -> bool:
