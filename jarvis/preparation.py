@@ -3,6 +3,7 @@
                                Appelé par lancer.bat avant le serveur. Code de sortie 1 si quelque chose manque.
   python -m jarvis installer   Détecte la VRAM et choisit les modèles dans config.json. Appelé par installer.bat."""
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -12,7 +13,7 @@ from pathlib import Path
 
 import requests
 
-from .config import RACINE
+from .config import RACINE, SECRETS
 
 CONFIG_PATH = RACINE / "config.json"
 KOKORO = {
@@ -38,14 +39,40 @@ def ollama_repond(url: str) -> bool:
         return False
 
 
-def demarrer_ollama(url: str) -> bool:
+def _exe_ollama() -> str | None:
+    """La commande ollama : dans le PATH, ou à l'endroit où son installateur la met (le PATH de ce processus ne voit
+    pas une installation faite à l'instant)."""
+    local = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Ollama" / "ollama.exe"
+    return shutil.which("ollama") or (str(local) if local.exists() else None)
+
+
+def installer_ollama() -> bool:
+    """L'installateur officiel d'Ollama, avec sa propre fenêtre de progression, sans droits administrateur."""
+    setup = RACINE / "workspace" / "OllamaSetup.exe"
+    setup.parent.mkdir(parents=True, exist_ok=True)
+    _dire("Ollama, qui fait tourner le cerveau sur la carte graphique, n'est pas installé : téléchargement depuis ollama.com.")
+    try:
+        urllib.request.urlretrieve("https://ollama.com/download/OllamaSetup.exe", setup)
+        _dire("Installation d'Ollama (sa fenêtre de progression s'affiche, une minute).")
+        subprocess.run([str(setup), "/SILENT", "/NORESTART"], timeout=900)
+    except Exception as e:
+        _dire(f"Installation d'Ollama impossible ({type(e).__name__}) : installez-le depuis ollama.com puis relancez.")
+        return False
+    finally:
+        setup.unlink(missing_ok=True)
+    return bool(_exe_ollama())
+
+
+def demarrer_ollama(url: str, installer_si_absent: bool = False) -> bool:
     if ollama_repond(url):
         return True
-    if not shutil.which("ollama"):
+    if not _exe_ollama() and not (installer_si_absent and installer_ollama()):
         _dire("Ollama n'est pas installé (commande « ollama » introuvable). Installez-le depuis ollama.com puis relancez.")
         return False
+    if ollama_repond(url):                      # son installateur le démarre tout seul
+        return True
     _dire("Ollama ne tourne pas : je le démarre.")
-    subprocess.Popen(["ollama", "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    subprocess.Popen([_exe_ollama(), "serve"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                      creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     for _ in range(30):
         time.sleep(1)
@@ -111,6 +138,27 @@ def telecharger_kokoro() -> bool:
 
 
 # --- vérification avant lancement -------------------------------------------------------------
+def _reparer_cloud_force(c: dict) -> dict:
+    """Jusqu'à la v1.0.20, l'installateur comparait la mémoire vidéo au Mo près : une carte « 8 Go » (8 188 Mo annoncés,
+    RTX 4070 portable) était mise en mode cloud payant, jeton à acheter. La mise à jour remplace le code mais jamais
+    config.json : ici, un mode cloud sans aucun jeton, sur une machine qui peut tourner en local, repasse en local."""
+    cloud = c.get("cerveau", {}).get("cloud", {})
+    if c.get("cerveau", {}).get("mode") != "cloud" or cloud.get("jeton") or SECRETS.get("CLOUD_TOKEN"):
+        return c
+    try:
+        from . import machine
+        examen = machine.examiner(str(RACINE))
+    except Exception:
+        return c
+    if examen["verdict"] == "cloud":
+        return c
+    machine.appliquer(c, examen)
+    CONFIG_PATH.write_text(json.dumps(c, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    _dire(f"{examen['gpu']['nom']} : cette carte fait tourner Jarvis en local, gratuitement. Le mode cloud (jeton payant) "
+          f"avait été choisi par erreur à l'installation ; c'est corrigé (cerveau {c['cerveau']['modele']}).")
+    return c
+
+
 def verifier() -> int:
     # 0. la mise à jour automatique (release publique GitHub), avant tout le reste
     try:
@@ -118,9 +166,14 @@ def verifier() -> int:
         v = mise_a_jour.au_lancement(_dire)
         if v:
             _dire(f"Jarvis est passé en version {v}.")
+            if not os.environ.get("JARVIS_APRES_MAJ"):
+                # ce processus a encore l'ancien code en mémoire : la suite de la vérification (réparations comprises)
+                # tourne dans un processus neuf, avec le code qui vient d'arriver
+                return subprocess.call([sys.executable, "-m", "jarvis", "verifier"], cwd=str(RACINE),
+                                       env={**os.environ, "JARVIS_APRES_MAJ": "1"})
     except Exception as e:
         _dire(f"Vérification des mises à jour impossible ({type(e).__name__}).")
-    c = _config()
+    c = _reparer_cloud_force(_config())
     if c["cerveau"].get("mode", "local") == "cloud":
         _dire(f"Cerveau distant : {c['cerveau']['cloud'].get('url')} (le compteur de sorties Internet le montrera).")
         url = c["ollama"]["url"]
@@ -132,7 +185,7 @@ def verifier() -> int:
                 telecharger_modele(url, m)
     else:
         url = c["ollama"]["url"]
-        if not demarrer_ollama(url):
+        if not demarrer_ollama(url, installer_si_absent=True):
             return 1
         presents = modeles_presents(url)
         for nom in (c["cerveau"]["modele"], c["vision"]["modele"]):
