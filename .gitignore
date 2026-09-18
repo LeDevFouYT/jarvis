@@ -15,4 +15,5 @@ installateur/build/
 installateur/dist/
 outils_externes/
 installateur/charge.zip
+installateur/python_embarque/
 passerelle/passerelle.json.avant
