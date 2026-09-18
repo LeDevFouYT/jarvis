@@ -1,6 +1,6 @@
 """Vérification de la machine : peut-elle faire tourner Jarvis en local ?
 Verdict : local_complet (NVIDIA >= 12 Go), local_reduit (NVIDIA 8 à 12 Go), cloud (moins, ou pas de NVIDIA :
-le cerveau et la vision tournent alors sur RunPod à travers la passerelle payante ; les oreilles et la voix
+le cerveau et la vision tournent alors à distance, Jarvis Cloud, à travers la passerelle payante ; les oreilles et la voix
 restent sur la machine). Utilisé par l'installateur, par `python -m jarvis installer` et par le HUD."""
 import ctypes
 import os
@@ -8,8 +8,11 @@ import platform
 import shutil
 import subprocess
 
-SEUIL_COMPLET_MO = 12 * 1024
-SEUIL_REDUIT_MO = 8 * 1024
+# Une carte vendue « 12 Go » annonce 12 282 Mo, une « 8 Go » 8 188 Mo, une « 16 Go » 16 303 Mo (nvidia-smi) : un seuil
+# au Mo près envoyait une RTX 4070 portable (8 Go) en mode cloud payant, avec un jeton à acheter (vu le 18/09, un
+# abonné). D'où une marge d'un demi-gigaoctet sous la capacité annoncée.
+SEUIL_COMPLET_MO = 12 * 1024 - 512
+SEUIL_REDUIT_MO = 8 * 1024 - 512
 RAM_MIN_GO = 12
 DISQUE_MIN_GO = 25
 
@@ -72,7 +75,7 @@ def examiner(dossier: str | None = None) -> dict:
     if gpu is None:
         verdict = "cloud"
         raison = ("Aucune carte graphique NVIDIA détectée. Le cerveau et la vision ne peuvent pas tourner ici : "
-                  "ils tourneront sur un serveur RunPod à travers la passerelle Jarvis (usage facturé). "
+                  "ils tourneront à distance, sur Jarvis Cloud (usage facturé). "
                   "L'écoute et la voix restent sur cette machine.")
         modeles = {"cerveau": "qwen3:14b", "vision": "gemma3:4b", "whisper": ("small", "cpu", "int8")}
     elif gpu["vram_mo"] >= SEUIL_COMPLET_MO:
@@ -88,7 +91,7 @@ def examiner(dossier: str | None = None) -> dict:
     else:
         verdict = "cloud"
         raison = (f"{gpu['nom']} avec {gpu['vram_mo'] / 1024:.0f} Go de mémoire vidéo, c'est trop peu pour le cerveau. "
-                  "Il tournera sur un serveur RunPod à travers la passerelle Jarvis (usage facturé). "
+                  "Il tournera à distance, sur Jarvis Cloud (usage facturé). "
                   "L'écoute et la voix restent sur cette machine.")
         modeles = {"cerveau": "qwen3:14b", "vision": "gemma3:4b", "whisper": ("small", "cuda", "float16")}
     if ram and ram < RAM_MIN_GO:
