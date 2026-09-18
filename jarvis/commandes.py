@@ -13,13 +13,24 @@
 import re
 import unicodedata
 
+# Une commande qui agit (éteindre, tout oublier, changer le titre, se taire, annuler) doit être TOUTE la phrase :
+# « Jarvis, éteins-toi s'il te plaît », pas « parle-moi de l'extinction des dinosaures ». Vu le 19/09 : ces mots
+# étaient cherchés n'importe où dans la phrase, et une question banale éteignait Jarvis (aussi depuis Telegram).
+_DEBUT = r"^(?:(?:hey |ok |bon |allez )?jarvis[,.!]?\s*)?(?:(?:tu peux|peux[- ]tu|vous pouvez|pouvez[- ]vous|tu veux bien)\s+)?"
+_FIN = r"(?:[\s,]*(?:maintenant|s'?il te plait|s'?il vous plait|stp|svp|merci|jarvis|pour ce soir|pour aujourd'?hui))*[\s.!?]*$"
+
+
+def _entiere(*formes: str) -> str:
+    return _DEBUT + "(?:" + "|".join(formes) + ")" + _FIN
+
+
 COMMANDES = {
-    "extinction": [r"\beteins?[- ]toi\b", r"\bextinction\b", r"\bva dormir\b", r"\barrete[- ]toi\b", r"\bferme[- ]toi\b"],
-    "oublier": [r"\boublie tout\b", r"\boublie la conversation\b", r"\befface tout\b", r"\befface la conversation\b",
-                r"\boublie ce qu'?on a dit\b"],
-    "silence": [r"^(jarvis[,.]?\s*)?silence[.! ]*$", r"\btais[- ]toi\b", r"^(jarvis[,.]?\s*)?chut[.! ]*$"],
-    "titre_madame": [r"\bappelle[- ]moi madame\b", r"\bje suis une femme\b", r"\bdis[- ]moi madame\b", r"\bc'?est madame\b"],
-    "titre_monsieur": [r"\bappelle[- ]moi monsieur\b", r"\bje suis un homme\b", r"\bdis[- ]moi monsieur\b", r"\bc'?est monsieur\b"],
+    "extinction": [_entiere(r"eteins[- ]toi", r"eteignez[- ]vous", r"t'?eteindre", r"vous eteindre", r"va dormir",
+                            r"allez dormir", r"arrete[- ]toi", r"arretez[- ]vous", r"ferme[- ]toi", r"extinction")],
+    "oublier": [_entiere(r"(?:oublie|oubliez|efface|effacez) (?:tout|la conversation|notre conversation|ce qu'?on (?:a|s'est) dit)")],
+    "silence": [_entiere(r"silence", r"chut", r"tais[- ]toi", r"taisez[- ]vous")],
+    "titre_madame": [_entiere(r"(?:appelle|appelez|dis)[- ]moi madame", r"je suis une femme")],
+    "titre_monsieur": [_entiere(r"(?:appelle|appelez|dis)[- ]moi monsieur", r"je suis un homme")],
     "souvenirs_liste": [r"\bqu'?est[- ]ce que tu sais (de|sur) moi\b", r"\bque sais[- ]tu (de|sur) moi\b",
                         r"\bqu'?est[- ]ce que vous savez (de|sur) moi\b", r"\bce que tu sais de moi\b",
                         r"\btes souvenirs sur moi\b", r"\bwhat do you know about me\b",
@@ -28,8 +39,8 @@ COMMANDES = {
                         r"\bme (montrer|montres?|afficher) (tes|ta|vos|votre) (souvenirs|memoire)\b",
                         r"\bce que tu as retenu( (de|sur) moi)?\s*[?.!]*$", r"\bqu'?est[- ]ce que tu as retenu\b",
                         r"\bde quoi tu te souviens\b", r"\btu te souviens de quoi\b"],
-    "annuler": [r"^(jarvis[,.]?\s*)?annule( le rangement| ca| ce rangement| le dernier rangement)?[.! ]*$",
-                r"\bremets? (tout )?(comme avant|en place)\b", r"\bdefais le rangement\b"],
+    "annuler": [_entiere(r"annule(?: le rangement| ca| ce rangement| le dernier rangement)?",
+                         r"remets? (?:tout )?(?:comme avant|en place)", r"defais le rangement")],
 }
 
 _RETENIR = re.compile(r"^(?:jarvis[,.]?\s*)?(?:retiens|retenez|souviens[- ]toi|souvenez[- ]vous|rappelle[- ]toi|"

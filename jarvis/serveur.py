@@ -189,6 +189,9 @@ def _brancher_evenements():
 
     def sur_rappel(r):
         texte = f"Rappel, {module_cerveau.TITRE} : {r['texte']}"
+        if r.get("en_retard"):
+            prevu = datetime.fromtimestamp(r["quand"])
+            texte = f"Rappel en retard, prévu à {prevu.hour} h {prevu.minute:02d} pendant que j'étais éteint : {r['texte']}"
         EMETTEUR.emettre({"type": "rappel", "t": time.time(), "texte": r["texte"]})
         voix.VOIX.taire("rappel")
         voix.VOIX.dire(texte)

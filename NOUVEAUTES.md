@@ -1,5 +1,16 @@
 # Nouveautés de Jarvis
 
+## 🛠️ Grand nettoyage : Jarvis plus fiable au quotidien
+
+On a passé tout Jarvis au peigne fin. Voici ce qui change pour toi :
+
+- **Il ne s'éteint plus sur une simple phrase.** « Parle-moi de l'extinction des dinosaures » ou « mon chat va dormir où ? » sont maintenant des questions comme les autres. Pour l'éteindre, dis « Jarvis, éteins-toi ».
+- **Tes rappels sonnent à la bonne heure.** « Dix-huit heures », « 18 heures 30 », « dans une heure et demie », « 7 h du soir », « lundi à 9 h », « le 25 à 10 h » : tout est compris. Et un rappel manqué pendant que Jarvis était éteint t'est dit au démarrage au lieu de disparaître.
+- **« Ouvre… » n'ouvre plus jamais un programme téléchargé.** Jarvis ouvre tes documents, photos, vidéos et raccourcis, mais ne lance plus un fichier .exe, .bat ou un script trouvé dans tes Téléchargements.
+- **Il ne devient plus sourd.** Si une phrase ne passe pas (carte graphique occupée par une image, par exemple), Jarvis le signale et continue d'écouter, au lieu d'attendre un redémarrage.
+- **Des mises à jour qui ne cassent rien.** La nouvelle version est préparée à côté de l'ancienne ; au moindre souci (antivirus, disque plein, coupure), l'ancienne est remise en place et la mise à jour réessaie au lancement suivant.
+- **Jarvis Cloud** : paiement et partage de la machine plus sûrs.
+
 ## 📂 « Ouvre mes notes » : il ouvre tes fichiers
 
 - **Ouvre un fichier par son nom**, comme tu le dis : « ouvre le document texte sur le bureau », « ouvre mes notes », « ouvre la facture en PDF ». Jarvis cherche sur le bureau, dans Documents, Téléchargements, Images, Vidéos et Musique, et comprend même un nom mal entendu.

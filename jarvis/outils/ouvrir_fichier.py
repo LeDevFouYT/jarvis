@@ -43,6 +43,11 @@ TYPES = {
     "txt": {".txt"}, "md": {".md"}, "jpg": {".jpg", ".jpeg"}, "png": {".png"}, "mp4": {".mp4"}, "docx": {".docx"}, "mp3": {".mp3"},
 }
 EXTENSIONS_CONNUES = set().union(*TYPES.values()) | {".exe", ".lnk", ".url", ".bat", ".py", ".html", ".docx"}
+# Jamais ouverts par la voix : un programme ou un script s'exécute au lieu de s'ouvrir. Vu à l'audit du 19/09 : « ouvre
+# Discord » lançait setup_discord.exe trouvé dans Téléchargements (0,92), « la facture en pdf » lançait facture.pdf.exe.
+# Les raccourcis .lnk restent permis : ce sont ceux qu'on pose soi-même sur son bureau.
+EXECUTABLES = {".exe", ".bat", ".cmd", ".com", ".ps1", ".psm1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".msi",
+               ".msix", ".msp", ".appx", ".appxbundle", ".scr", ".pif", ".hta", ".cpl", ".jar", ".reg", ".py", ".pyw", ".application"}
 
 
 def normaliser(t: str) -> str:
@@ -77,6 +82,8 @@ def candidats(racines: list[Path], profondeur: int = 2) -> list[Path]:
         try:
             for p in d.iterdir():
                 if p.name.startswith((".", "~$")) or p.name.lower() == "desktop.ini":
+                    continue
+                if p.suffix.lower() in EXECUTABLES and not p.is_dir():
                     continue
                 sortie.append(p)
                 if p.is_dir() and niveau < profondeur:

@@ -2,6 +2,7 @@
 La table nom -> commande est dans config.json (`applications`) ; monsieur peut la compléter."""
 import difflib
 import os
+import re
 import subprocess
 import unicodedata
 import webbrowser
@@ -25,12 +26,16 @@ def _normaliser(t: str) -> str:
 
 
 def trouver(nom: str) -> tuple[str, str] | None:
-    n = _normaliser(nom)
+    n = _normaliser(nom or "")
+    if len(n) < 2:
+        return None                    # un nom vide « trouvait » la première entrée de la table (vu à l'audit : start_comfy.bat)
     cles = {_normaliser(k): k for k in TABLE}
     if n in cles:
         return cles[n], TABLE[cles[n]]
+    if re.search(r"\.[a-z0-9]{1,5}$", n):
+        return None                    # « jarvis-consignes.md » est un fichier, pas le dossier « jarvis »
     for cn, k in cles.items():
-        if n in cn or cn in n:
+        if (len(n) >= 3 and n in cn) or re.search(rf"(^|[\s-]){re.escape(cn)}($|[\s-])", n):
             return k, TABLE[k]
     proches = difflib.get_close_matches(n, list(cles), n=1, cutoff=0.75)
     if proches:

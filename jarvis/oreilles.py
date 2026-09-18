@@ -372,10 +372,24 @@ class Oreilles(threading.Thread):
             for bloc in source(self.arret):
                 if self.en_pause.is_set():
                     continue
-                if self.etat == "veille":
-                    self._veille(bloc)
-                elif self.etat == "ecoute":
-                    self._ecoute(bloc)
+                try:
+                    if self.etat == "veille":
+                        self._veille(bloc)
+                    elif self.etat == "ecoute":
+                        self._ecoute(bloc)
+                except Exception as e:
+                    # Une phrase ratée (Whisper sans mémoire vidéo pendant un dessin, par exemple) ne rend plus Jarvis
+                    # sourd jusqu'au prochain lancement (audit du 19/09) : on l'annonce, on oublie cette phrase, on
+                    # se remet en veille et on continue d'écouter.
+                    self._emettre("erreur", message=f"écoute : {type(e).__name__} : {e}")
+                    self.tampon, self.a_parle, self.anticipation = [], False, None
+                    self.parle_veille, self.tampon_veille = False, []
+                    self.etat = "veille"
+                    try:
+                        self.detecteur.reset()
+                    except Exception:
+                        pass
+                    time.sleep(0.5)
         except Exception as e:
             self.erreur = f"{type(e).__name__} : {e}"
             self.etat = "erreur"
