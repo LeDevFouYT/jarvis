@@ -68,6 +68,7 @@ def oublier():
     d = _lire()
     d.pop("jetons", None)
     d.pop("compte", None)
+    d.pop("chaine_id", None)       # sinon l'ancienne chaîne restait « la mienne » après un changement de compte
     _ecrire(d)
 
 
@@ -171,6 +172,9 @@ def jeton_acces() -> str | None:
         r = requests.post(_uri_jeton(client), data={"client_id": client.get("client_id"), "client_secret": client.get("client_secret"),
                                                      "refresh_token": jetons["refresh_token"], "grant_type": "refresh_token"}, timeout=20)
         if r.status_code != 200:
+            if r.status_code in (400, 401) and "invalid_grant" in r.text:
+                # accès retiré dans le compte Google : les Réglages ne l'affichent plus comme connecté
+                oublier()
             return None
         nouveau = r.json()
         jetons.update(access_token=nouveau["access_token"], expire=time.time() + int(nouveau.get("expires_in", 3600)) - 60)

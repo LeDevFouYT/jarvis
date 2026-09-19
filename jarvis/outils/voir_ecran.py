@@ -34,6 +34,8 @@ def executer(ecran: str = "principal", question: str = "") -> str:
     if not _verrou.acquire(blocking=False):
         return "Je suis déjà en train de regarder l'écran, monsieur."
     ecran = ecran or "principal"
+    from . import source_courante
+    demande = source_courante()                 # « telegram » : la description repart au téléphone, pas à la maison
     consigne = question or "Décrivez ce que la personne est en train de faire à l'écran."
 
     def travail():
@@ -54,10 +56,10 @@ def executer(ecran: str = "principal", question: str = "") -> str:
             chrono["total_description"] = round(time.time() - debut, 2)
             journal.info("description de %s en %.1f s", libelle, chrono["vision"])
             sur_evenement({"type": "vision", "t": time.time(), "ecran": libelle, "texte": description,
-                           "duree": chrono["total_description"]})
+                           "duree": chrono["total_description"], "demande": demande})
         except Exception as e:
             journal.exception("vision")
-            sur_evenement({"type": "vision_erreur", "t": time.time(), "message": f"{type(e).__name__} : {e}"})
+            sur_evenement({"type": "vision_erreur", "t": time.time(), "message": f"{type(e).__name__} : {e}", "demande": demande})
         finally:
             t = time.time()
             try:

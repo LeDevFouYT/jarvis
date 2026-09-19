@@ -164,6 +164,9 @@ def _executer_cloud(prompt: str, format_: str) -> str:
     from .. import cerveau
     base = cerveau.OLLAMA[:-len("/ollama")] if cerveau.OLLAMA.endswith("/ollama") else cerveau.OLLAMA
 
+    from . import source_courante
+    demande = source_courante()
+
     def travail():
         import base64
         chrono = {}
@@ -180,10 +183,10 @@ def _executer_cloud(prompt: str, format_: str) -> str:
             chemin.write_bytes(png)
             chrono["generation"] = round(time.time() - t, 2)
             sur_evenement({"type": "image", "t": time.time(), "chemin": str(chemin), "url": f"/workspace/images/{chemin.name}",
-                           "prompt": prompt, "duree": chrono["generation"]})
+                           "prompt": prompt, "duree": chrono["generation"], "demande": demande})
         except Exception as e:
             journal.exception("image cloud")
-            sur_evenement({"type": "image_erreur", "t": time.time(), "message": f"{type(e).__name__} : {e}"})
+            sur_evenement({"type": "image_erreur", "t": time.time(), "message": f"{type(e).__name__} : {e}", "demande": demande})
         finally:
             chrono["total_cycle"] = round(time.time() - t, 2)
             sur_evenement({"type": "image_fin", "t": time.time(), "chrono": chrono})
@@ -204,6 +207,8 @@ def executer(prompt: str, format: str = "carre") -> str:
     debut = time.time()
     chrono = {}
     client = uuid.uuid4().hex
+    from . import source_courante
+    demande = source_courante()                 # « telegram » : l'image part au téléphone quand elle est prête
     try:
         sur_evenement({"type": "image_debut", "t": time.time(), "prompt": prompt})
         t0 = time.time()
@@ -236,14 +241,20 @@ def executer(prompt: str, format: str = "carre") -> str:
             journal.info("image %s en %.1f s", chemin.name, chrono["generation"])
             sur_evenement({"type": "image", "t": time.time(), "chemin": str(chemin),
                            "url": f"/workspace/images/{chemin.name}", "prompt": prompt,
-                           "duree": chrono["generation"]})
+                           "duree": chrono["generation"], "demande": demande})
         except Exception as e:
             journal.exception("génération")
-            sur_evenement({"type": "image_erreur", "t": time.time(), "message": f"{type(e).__name__} : {e}"})
+            sur_evenement({"type": "image_erreur", "t": time.time(), "message": f"{type(e).__name__} : {e}", "demande": demande})
         finally:
-            _liberer_et_recharger(chrono, debut)
-            sur_evenement({"type": "image_fin", "t": time.time(), "chrono": dict(chrono)})
-            _verrou.release()
+            # le verrou est rendu quoi qu'il arrive : si le cerveau ne se recharge pas (Ollama arrêté, mémoire pleine),
+            # « une image est déjà en cours » ne répond plus à chaque demande jusqu'au redémarrage (audit du 19/09)
+            try:
+                _liberer_et_recharger(chrono, debut)
+            except Exception:
+                journal.exception("rechargement du cerveau après l'image")
+            finally:
+                sur_evenement({"type": "image_fin", "t": time.time(), "chrono": dict(chrono)})
+                _verrou.release()
 
     threading.Thread(target=terminer, daemon=True, name="image-fond").start()
     return ("Je lance le dessin, monsieur. Comptez une à deux minutes : l'image s'affichera dans l'interface "

@@ -49,6 +49,7 @@ from faster_whisper.audio import decode_audio  # noqa: E402
 from faster_whisper.vad import get_vad_model  # noqa: E402
 
 FREQ = 16000
+PAUSE_MAX_S = 60                  # le micro du navigateur ne garde pas celui du PC en pause plus longtemps
 BLOC = 1280  # 80 ms : la tranche qu'attend openWakeWord
 REGLAGES = CONFIG["oreilles"]
 
@@ -234,21 +235,61 @@ def choisir_peripherique():
     raise ValueError(f"Aucun micro dont le nom contient « {voulu} ». Lancer : python -m jarvis peripheriques")
 
 
-def source_micro(arret: threading.Event, peripherique=None):
-    """Générateur de blocs int16 de 80 ms à 16 kHz mono."""
+_verrou_audio = threading.Lock()
+MICRO_MUET_S = 3.0                # plus aucun son du micro pendant ce temps : il a disparu (casque débranché)
+
+
+def rafraichir_peripheriques():
+    """PortAudio fige la liste des périphériques au démarrage : un casque Bluetooth branché ou changé en route
+    n'existait pas pour Jarvis (audit du 19/09). On la relit ; les flux ouverts se referment et se rouvrent seuls."""
     import sounddevice as sd
-    file = queue.Queue()
+    with _verrou_audio:
+        try:
+            sd._terminate()
+        except Exception:
+            pass
+        sd._initialize()
 
-    def rappel(indata, frames, temps, statut):
-        file.put(indata[:, 0].copy())
 
-    with sd.InputStream(samplerate=FREQ, channels=1, dtype="int16", blocksize=BLOC,
-                        device=peripherique, callback=rappel):
-        while not arret.is_set():
+def source_micro(arret: threading.Event, peripherique=None, choisir=None):
+    """Générateur de blocs int16 de 80 ms à 16 kHz mono. Si le micro se tait complètement (débranché, casque
+    Bluetooth coupé ou changé), la liste des périphériques est relue et le micro rouvert (`choisir` le redésigne)."""
+    import sounddevice as sd
+    while not arret.is_set():
+        file = queue.Queue()
+
+        def rappel(indata, frames, temps, statut, file=file):
+            file.put(indata[:, 0].copy())
+
+        try:
+            flux = sd.InputStream(samplerate=FREQ, channels=1, dtype="int16", blocksize=BLOC,
+                                  device=peripherique, callback=rappel)
+        except Exception:
+            arret.wait(3)                        # aucun micro pour l'instant : on réessaie, sans tuer l'écoute
+            rafraichir_peripheriques()
             try:
-                yield file.get(timeout=0.5)
-            except queue.Empty:
-                continue
+                peripherique = choisir() if choisir else None
+            except Exception:
+                peripherique = None
+            continue
+        with flux:
+            dernier_son = time.time()
+            while not arret.is_set():
+                try:
+                    bloc = file.get(timeout=0.5)
+                except queue.Empty:
+                    if not flux.active or time.time() - dernier_son > MICRO_MUET_S:
+                        break                    # le périphérique a disparu : on le rouvre
+                    continue
+                dernier_son = time.time()
+                yield bloc
+        if arret.is_set():
+            return
+        rafraichir_peripheriques()
+        try:
+            peripherique = choisir() if choisir else None
+        except Exception:
+            peripherique = None
 
 
 def source_fichier(chemin: str, silence_final_s: float = 3.0):
@@ -339,6 +380,7 @@ class Oreilles(threading.Thread):
         # réponse éclair
         self.t_derniere_voix = 0.0
         self.anticipation = None
+        self._reprise_auto: threading.Timer | None = None
 
     # --- cycle de vie ---
     def arreter(self):
@@ -347,11 +389,21 @@ class Oreilles(threading.Thread):
     def suspendre(self):
         """Le micro du navigateur prend la main (Espace maintenu) : le micro du PC n'écoute plus, rien d'entamé ne sera livré."""
         self.en_pause.set()
+        # filet de sécurité : si la reprise n'arrive jamais (onglet fermé Espace enfoncé, navigateur planté), le micro
+        # du PC se rouvre seul au bout d'une minute au lieu de rester sourd jusqu'au redémarrage
+        if self._reprise_auto:
+            self._reprise_auto.cancel()
+        self._reprise_auto = threading.Timer(PAUSE_MAX_S, self.reprendre)
+        self._reprise_auto.daemon = True
+        self._reprise_auto.start()
         self.parle_veille, self.tampon_veille, self.phrase_libre, self.anticipation = False, [], None, None
         if self.etat == "ecoute":
             self.tampon, self.a_parle, self.etat = [], False, "veille"
 
     def reprendre(self):
+        if self._reprise_auto:
+            self._reprise_auto.cancel()
+            self._reprise_auto = None
         self.parle_veille, self.tampon_veille = False, []
         if self.detecteur:
             self.detecteur.reset()
@@ -366,7 +418,7 @@ class Oreilles(threading.Thread):
             self.detecteur = Model(wakeword_models=[self.mot], inference_framework="onnx")
             self.vad = DetecteurParole()
             threading.Thread(target=charger_whisper, daemon=True).start()  # préchauffe pendant la veille
-            source = self.source or (lambda arret: source_micro(arret, choisir_peripherique()))
+            source = self.source or (lambda arret: source_micro(arret, choisir_peripherique(), choisir=choisir_peripherique))
             self.etat = "veille"
             self._emettre("pret", mot=self.mot, seuil=reglage("seuil", 0.5))
             for bloc in source(self.arret):

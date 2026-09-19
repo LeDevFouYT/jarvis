@@ -602,9 +602,11 @@ function basculerPleinEcran() { if (document.fullscreenElement) document.exitFul
 async function demarrerEcoute() {
   if (occupe || enregistreur) return;
   fetch("/taire", { method: "POST" });
-  fetch("/oreilles/pause", { method: "POST" });          // un seul micro à la fois : sinon chaque phrase est traitée deux fois
   try { flux = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
   catch (e) { note("micro du navigateur refusé : " + e.message); return; }
+  // un seul micro à la fois (sinon chaque phrase est traitée deux fois), et seulement une fois celui du navigateur
+  // ouvert : refusé, il laissait le micro du PC en pause jusqu'au redémarrage (audit du 19/09)
+  fetch("/oreilles/pause", { method: "POST" });
   const actx = new AudioContext(), analyseur = actx.createAnalyser(); analyseur.fftSize = 256;
   actx.createMediaStreamSource(flux).connect(analyseur);
   const donnees = new Uint8Array(analyseur.frequencyBinCount);

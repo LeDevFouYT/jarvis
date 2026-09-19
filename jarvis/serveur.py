@@ -20,6 +20,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+import requests
+
 # Windows lit parfois .js comme text/plain dans le registre : les modules ES seraient refusés
 mimetypes.add_type("text/javascript", ".js")
 mimetypes.add_type("text/css", ".css")
@@ -56,7 +58,14 @@ _amorce_index = [0]
 PRISES: dict[int, dict] = {}
 DERNIERE_LATENCE: dict = {}
 JOURNAL_DIALOGUE = logging.getLogger("dialogue")   # workspace/journal.log : chaque question, sa réponse, ses outils
-_langue_en_cours = {"langue": "fr", "telegram": False}
+class _LangueEnCours(threading.local):
+    """La langue de la question en cours, propre à chaque fil. Audit du 19/09 : un dictionnaire global, modifié avant
+    le verrou du cerveau, se mélangeait entre une question vocale et une question Telegram (amorces dites à la
+    maison pendant la question du téléphone, capture partie sur le mauvais canal)."""
+    langue = "fr"
+
+
+_langue_en_cours = _LangueEnCours()
 
 
 # --- diffusion des événements ------------------------------------------------------------
@@ -129,8 +138,8 @@ def _brancher_evenements():
     def sur_outil(e):
         EMETTEUR.emettre(e)
         if e["type"] == "outil_appel" and e["outil"] in OUTILS_AVEC_AMORCE and not voix.VOIX.parle() \
-                and not _langue_en_cours["telegram"]:
-            langue = _langue_en_cours["langue"]
+                and e.get("source") != "telegram":
+            langue = _langue_en_cours.langue
             liste = AMORCES_EN if langue == "en" else AMORCES
             voix.VOIX.dire_phrase(liste[_amorce_index[0] % len(liste)], langue=langue)
             _amorce_index[0] += 1
@@ -139,17 +148,26 @@ def _brancher_evenements():
 
     def sur_evenement_module(e):
         EMETTEUR.emettre(e)
+        # chaque résultat part là où la demande a été faite (champ « demande » posé par l'outil) : le téléphone
+        # ou la maison, jamais les deux au hasard (audit du 19/09)
+        au_telephone = e.get("demande") == "telegram" and TELEGRAM
         if e["type"] == "image":
-            if TELEGRAM:
-                TELEGRAM.image_prete(e["chemin"], e.get("prompt", ""))
-            voix.VOIX.dire(f"L'image est prête, {module_cerveau.TITRE}, en {e['duree']:.0f} secondes. Elle est à l'écran.")
-        elif e["type"] == "capture" and TELEGRAM and _langue_en_cours["telegram"]:
+            if au_telephone:
+                TELEGRAM.envoyer_photo(e["chemin"], e.get("prompt", ""))
+            else:
+                voix.VOIX.dire(f"L'image est prête, {module_cerveau.TITRE}, en {e['duree']:.0f} secondes. Elle est à l'écran.")
+        elif e["type"] == "capture" and au_telephone:
             TELEGRAM.envoyer_photo(e["chemin"], "Capture d'écran")
         elif e["type"] == "image_erreur":
-            voix.VOIX.dire(f"Le dessin a échoué, {module_cerveau.TITRE}.")
+            if au_telephone:
+                TELEGRAM.repondre(f"Le dessin a échoué : {e['message'].split(' : ', 1)[-1]}")
+            else:
+                voix.VOIX.dire(f"Le dessin a échoué, {module_cerveau.TITRE}.")
+        elif e["type"] == "vision_erreur" and au_telephone:
+            TELEGRAM.repondre(f"Je n'ai pas pu regarder l'écran : {e['message'].split(' : ', 1)[-1]}")
         elif e["type"] == "vision":
             # La description du modèle de vision est dite telle quelle et entre dans l'historique du cerveau.
-            if e.get("demande") == "telegram" and TELEGRAM:
+            if au_telephone:
                 TELEGRAM.repondre(e["texte"], vocal=True)
             else:
                 voix.VOIX.dire(e["texte"])
@@ -620,7 +638,7 @@ def _dialoguer(texte: str, langue: str | None = None, fin_parole: float | None =
     PRISES[prise] = infos
     for ancienne in [p for p in PRISES if p < prise - 50]:
         PRISES.pop(ancienne, None)
-    _langue_en_cours.update(langue=langue, telegram=not parler)
+    _langue_en_cours.langue = langue
 
     def sur_phrase(p):
         infos.setdefault("t_phrase", time.time())
@@ -634,9 +652,20 @@ def _dialoguer(texte: str, langue: str | None = None, fin_parole: float | None =
     EMETTEUR.emettre({"type": "reflexion", "t": time.time(), "prise": prise, "question": texte, "langue": langue})
     try:
         reponse = CERVEAU.repondre(texte, journal=lambda nom, res: appels.append({"outil": nom, "resultat": res[:300]}),
-                                   sur_phrase=sur_phrase, sur_jeton=sur_jeton, langue=langue, souvenirs=souvenirs)
+                                   sur_phrase=sur_phrase, sur_jeton=sur_jeton, langue=langue, souvenirs=souvenirs,
+                                   source=source)
+    except Exception as e:
+        # Ollama arrêté, erreur 500 faute de mémoire vidéo… Avant l'audit du 19/09 l'exception tuait le fil : rien
+        # n'était dit et le HUD restait bloqué sur « réflexion ». Jarvis dit maintenant ce qui se passe.
+        JOURNAL_DIALOGUE.exception("cerveau")
+        injoignable = isinstance(e, requests.ConnectionError)
+        reponse = (f"Mon cerveau ne répond pas, {module_cerveau.TITRE} : Ollama n'a pas l'air lancé. Relancez-moi, ou lancez Ollama."
+                   if injoignable else f"Mon cerveau a eu un problème ({type(e).__name__}). Reposez-moi la question dans un instant.")
+        EMETTEUR.emettre({"type": "erreur", "t": time.time(), "message": f"cerveau : {type(e).__name__} : {e}"})
+        if parler:
+            voix.VOIX.dire_phrase(reponse, prise, langue=langue)
     finally:
-        _langue_en_cours.update(langue="fr", telegram=False)
+        _langue_en_cours.langue = "fr"
     chrono["cerveau"] = round(time.time() - t, 2)
     chrono["premiere_phrase"] = round(infos["t_phrase"] - t, 2) if infos.get("t_phrase") else None
     verification = _verifier_chiffres(appels, reponse)

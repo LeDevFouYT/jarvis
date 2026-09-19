@@ -126,10 +126,22 @@ def question_augmentee(texte: str, langue: str = "fr", souvenirs: list[dict] | N
 # « Ouvrir_application, bloc-notes » ou « Oui, monsieur » en texte au lieu d'appeler l'outil, et l'historique ainsi
 # empoisonné faisait échouer toutes les demandes suivantes.
 _DEMANDE_ACTION = re.compile(
-    r"\b(ouvr\w*|ferm\w*|lance[rz]?|d[ée]marr\w*|mets|mettre|mettez|place[rz]?|d[ée]place\w*|agrandi\w*|r[ée]dui[st]\w*|"
-    r"range[rz]?|tri[ez]?|[ée]cri[st]|[ée]crire|tape[rz]?|note[rz]?|rappelle[rz]?|dessine[rz]?|g[ée]n[èe]re[rz]?|envoie[rz]?|"
-    r"cherche[rz]?|monte[rz]?|baisse[rz]?|coupe[rz]?|verrouill\w*|captur\w*|regarde[rz]?|r[ée]sume[rz]?|analyse[rz]?|"
-    r"reformule[rz]?|briefing|miniatures?|volume)\b", re.IGNORECASE)
+    # Audit du 19/09 : « écris-moi un poème », « quelle note as-tu eue ? », « le volume de la Terre »,
+    # « rappelle-moi ce que tu as dit » passaient pour des actions sur le PC : la réponse était retenue et le modèle
+    # poussé vers un outil (jusqu'à taper le poème dans la fenêtre active). Les mots ambigus exigent maintenant leur
+    # contexte : écrire quelque part, noter quelque chose, régler le volume, se faire rappeler de faire quelque chose.
+    r"\b(ouvr\w*|ferm(?:e|er|ez)\b(?!\s+(?:agricole|du|de la))|lance[rz]?|d[ée]marr\w*|mets|mettre|mettez|place[rz]?|"
+    r"d[ée]place\w*|agrandi\w*|r[ée]dui[st]\w*|range[rz]?|tri[ez]?|tape[rz]?|dessine[rz]?|g[ée]n[èe]re[rz]?|envoie[rz]?|"
+    r"cherche[rz]?|monte[rz]?|baisse[rz]?|coupe[rz]?(?!\s+d[eu]\s)|verrouill\w*|captur\w*|regarde[rz]?|r[ée]sume[rz]?|analyse[rz]?|"
+    r"reformule[rz]?|briefing|miniatures?|"
+    r"note[rz]?\s+(?:[çc]a|cela|que|qu'|le |la |les |mon |ma |mes |dans )|prends?\s+(?:en\s+)?note|noter\b|"
+    r"rappelle[rz]?[- ](?:moi|nous)\s+(?!ce |ce qu|qui |comment |pourquoi |quand |quel|quoi |le nom |la |les |ton |ta |tes )\S+|"
+    r"volume\s+(?:[àa]|au|de\s+\d)|"
+    r"[ée]cri(?:s|re|vez)\b[^.?!]*\b(?:dans|sur|ici|l[àa]|fen[êe]tre|bloc|word|document|message|mail)\b|"
+    # en anglais : ouvrir, fermer, lancer, écrire quelque part, noter, rappeler, dessiner, envoyer, chercher, son…
+    r"open|close|launch|start|minimi[sz]e|maximi[sz]e|move|type|remind\s+me\s+to|draw|send|search|mute|lock|"
+    r"screenshot|turn\s+(?:up|down|on|off)|take\s+a\s+(?:photo|picture)|look\s+at|write\b[^.?!]*\b(?:in|into)\b|"
+    r"note\s+(?:that|this|down))\b", re.IGNORECASE)
 RAPPEL_ACTION = ("[Consigne : cette demande exige une action sur l'ordinateur. Appelez maintenant l'outil qui convient, "
                  "sans écrire son nom dans votre texte. Si l'action est vraiment impossible, dites pourquoi en une phrase.]")
 
@@ -180,12 +192,17 @@ class Cerveau:
         self.stop = threading.Event()          # une interruption : la génération en cours s'arrête tout de suite
         self.flux = None                       # la réponse Ollama en cours de lecture, pour la couper sans attendre
         self.tour_titre = -TITRE_ESPACEMENT    # le dernier tour où « monsieur / madame » a été dit
+        self.source_courante = ""              # le canal de la réponse en cours : voix, texte, telegram
         self.derniere_mesure = {}
 
-    def interrompre(self):
+    def interrompre(self, par: str = "voix"):
         """La personne a repris la parole : la réponse en cours s'arrête, la nouvelle question passera juste après.
+        Une réponse pour le téléphone (Telegram) n'est pas coupée par un « Hey Jarvis » ou un Espace à la maison :
+        avant l'audit du 19/09 elle s'arrêtait et le téléphone ne recevait jamais rien.
         Le flux est coupé net : attendre le jeton suivant coûtait plus d'une seconde quand la carte graphique est
         occupée par autre chose (vu le 17/09, un jeu ouvert : 1054 ms)."""
+        if self.source_courante == "telegram" and par != "telegram":
+            return
         self.stop.set()
         flux = self.flux
         try:
@@ -315,129 +332,136 @@ class Cerveau:
         return message
 
     def repondre(self, texte: str, journal=None, sur_phrase=None, sur_jeton=None, langue: str = "fr",
-                 souvenirs: list[dict] | None = None) -> str:
+                 souvenirs: list[dict] | None = None, source: str = "") -> str:
         """Question -> réponse orale complète.
         `journal(nom, resultat)` reçoit chaque appel d'outil ; `sur_phrase(phrase)` chaque phrase dès qu'elle est finie ;
         `sur_jeton(morceau)` chaque morceau de texte tel qu'il sort du modèle (pour l'affichage) ;
         `langue` la langue de la question (fr ou en) ; `souvenirs` les souvenirs pertinents (memoire.pertinents)."""
-        from .voix import Decoupeur
         with self.verrou:
-            self.stop.clear()
-            systeme = {"role": "system", "content": personnage()}
-            debut = len(self.historique)
-            self.historique.append({"role": "user", "content": question_augmentee(texte, langue, souvenirs)})
-            # L'historique garde les appels d'outils et leurs résultats : sans eux, le modèle ne voit que des
-            # réponses « sorties de nulle part » et se met à imiter ce style en inventant les chiffres.
-            messages = [systeme] + self._recents()
-            # « monsieur » une fois de temps en temps, pas à chaque réponse (vu le 17/09 : « il m'appelle monsieur à
-            # chaque phrase ») : s'il a été dit dans l'une des TITRE_ESPACEMENT dernières réponses, il est retiré.
-            recent = self.tours - self.tour_titre < TITRE_ESPACEMENT
-            titre_dit = {"deja": recent, "initial": recent}
+            try:
+                return self._repondre(texte, journal, sur_phrase, sur_jeton, langue, souvenirs, source)
+            finally:
+                self.source_courante = ""
 
-            def sur_phrase_epuree(p):
-                p, titre_dit["deja"] = epurer_titre(p, titre_dit["deja"])
-                if p:
-                    sur_phrase(p)
+    def _repondre(self, texte, journal, sur_phrase, sur_jeton, langue, souvenirs, source) -> str:
+        from .voix import Decoupeur
+        self.source_courante = source
+        self.stop.clear()
+        systeme = {"role": "system", "content": personnage()}
+        debut = len(self.historique)
+        self.historique.append({"role": "user", "content": question_augmentee(texte, langue, souvenirs)})
+        # L'historique garde les appels d'outils et leurs résultats : sans eux, le modèle ne voit que des
+        # réponses « sorties de nulle part » et se met à imiter ce style en inventant les chiffres.
+        messages = [systeme] + self._recents()
+        # « monsieur » une fois de temps en temps, pas à chaque réponse (vu le 17/09 : « il m'appelle monsieur à
+        # chaque phrase ») : s'il a été dit dans l'une des TITRE_ESPACEMENT dernières réponses, il est retiré.
+        recent = self.tours - self.tour_titre < TITRE_ESPACEMENT
+        titre_dit = {"deja": recent, "initial": recent}
 
-            decoupeur = Decoupeur(sur_phrase_epuree, premiere_courte=True) if sur_phrase else None
-            reponse_totale = []
+        def sur_phrase_epuree(p):
+            p, titre_dit["deja"] = epurer_titre(p, titre_dit["deja"])
+            if p:
+                sur_phrase(p)
 
-            def sur_morceau(m):
-                if sur_jeton:
-                    sur_jeton(m)
-                if decoupeur:
-                    decoupeur.ajouter(m)
+        decoupeur = Decoupeur(sur_phrase_epuree, premiere_courte=True) if sur_phrase else None
+        reponse_totale = []
 
-            action = bool(_DEMANDE_ACTION.search(texte))
-            for tour in range(5):
-                parle = sur_morceau if (sur_jeton or decoupeur) else None
-                # la première réponse à une demande d'action n'est dite qu'une fois sûre : outil appelé, ou vraie réponse
-                retenue = tour == 0 and action
-                portillon = _Portillon(parle) if parle and not retenue else None
-                message = self._appel(messages, None if retenue else portillon)
-                if portillon:
-                    portillon.terminer()
-                contenu = (message.get("content") or "").strip()
-                appels = message.get("tool_calls") or []
-                if tour == 0 and not appels and not self.stop.is_set() and (action or _echo_d_outil(contenu)):
-                    relance = self._appel(messages + [{"role": "assistant", "content": contenu},
-                                                      {"role": "user", "content": RAPPEL_ACTION}], None)
-                    if relance.get("tool_calls"):
-                        message, appels = relance, relance["tool_calls"]        # la fausse réponse n'entre pas dans l'historique
-                        contenu = (relance.get("content") or "").strip()
-                    else:
-                        if _echo_d_outil(contenu) or not contenu:
-                            contenu = (relance.get("content") or "").strip()
-                        message = {"role": "assistant", "content": contenu}
-                    if parle and contenu and (retenue or portillon.echo) and not self.stop.is_set():
-                        parle(contenu)
-                elif retenue and parle and contenu and not self.stop.is_set():
-                    parle(contenu)
-                if _echo_d_outil(contenu):
-                    contenu = ""
-                message["content"] = contenu
-                if contenu:
-                    reponse_totale.append(contenu)
-                if not appels or self.stop.is_set():
-                    break
-                messages.append(message)
-                self.historique.append(message)
-                direct = None
-                for appel in appels:
-                    fonction = appel["function"]
-                    arguments = fonction.get("arguments") or {}
-                    if isinstance(arguments, str):
-                        try:
-                            arguments = json.loads(arguments)
-                        except json.JSONDecodeError:
-                            arguments = {}
-                    questions_avant, refus_avant = confirmations.demandes, outils.refus_compte
-                    resultat = outils.executer(fonction["name"], arguments)
-                    if journal:
-                        journal(fonction["name"], resultat)
-                    message_outil = {"role": "tool", "content": resultat, "tool_name": fonction["name"]}
-                    messages.append(message_outil)
-                    self.historique.append(message_outil)
-                    # une question de confirmation se dit mot pour mot : reformulée, le « oui / non » perd son objet
-                    if outils.est_direct(fonction["name"]) or confirmations.demandes != questions_avant \
-                            or outils.refus_compte != refus_avant:
-                        direct = resultat
-                if direct is not None:
-                    # Outil à réponse directe (image en cours) : son texte est la réponse, sans rappeler le
-                    # modèle, pour ne pas recharger le cerveau pendant que ComfyUI occupe la VRAM.
-                    reponse_totale.append(direct)
-                    if decoupeur:
-                        decoupeur.ajouter(direct)
-                    if sur_jeton:
-                        sur_jeton(direct)
-                    break
-            else:
-                texte_boucle = "Je tourne en rond. Reformulez, je vous prie." if langue != "en" else "I'm going in circles. Could you rephrase?"
-                reponse_totale.append(texte_boucle)
-                if decoupeur:
-                    decoupeur.ajouter(texte_boucle)
-
-            if self.stop.is_set():
-                # Coupé par la personne (elle a repris la parole) : le bout de réponse n'est ni rendu ni gardé. Vu en
-                # direct le 17/09 : « Oui, monsieur. », début d'une réponse coupée, entrait dans l'historique ; le modèle
-                # l'imitait ensuite (« tu m'entends ? » -> « Oui, monsieur. ») et n'appelait plus l'outil demandé.
-                if any(m.get("role") == "tool" for m in self.historique[debut:]):
-                    self.historique.append({"role": "assistant", "content": "(réponse interrompue : la personne a repris la parole)"})
-                else:
-                    del self.historique[debut:]
-                self.dernier_echange = time.time()
-                return ""
+        def sur_morceau(m):
+            if sur_jeton:
+                sur_jeton(m)
             if decoupeur:
-                decoupeur.terminer()
-            reponse = " ".join(r for r in reponse_totale if r).strip() or ("…" if langue == "en" else f"Je n'ai rien à répondre, {TITRE}.")
-            reponse, titre_garde = titre_une_fois(reponse, titre_dit["initial"])
-            if titre_garde:
-                self.tour_titre = self.tours
-            self.historique.append({"role": "assistant", "content": reponse})
-            self.tours += 1
-            self.tours_depuis_souvenirs += 1
+                decoupeur.ajouter(m)
+
+        action = bool(_DEMANDE_ACTION.search(texte))
+        for tour in range(5):
+            parle = sur_morceau if (sur_jeton or decoupeur) else None
+            # la première réponse à une demande d'action n'est dite qu'une fois sûre : outil appelé, ou vraie réponse
+            retenue = tour == 0 and action
+            portillon = _Portillon(parle) if parle and not retenue else None
+            message = self._appel(messages, None if retenue else portillon)
+            if portillon:
+                portillon.terminer()
+            contenu = (message.get("content") or "").strip()
+            appels = message.get("tool_calls") or []
+            if tour == 0 and not appels and not self.stop.is_set() and (action or _echo_d_outil(contenu)):
+                relance = self._appel(messages + [{"role": "assistant", "content": contenu},
+                                                  {"role": "user", "content": RAPPEL_ACTION}], None)
+                if relance.get("tool_calls"):
+                    message, appels = relance, relance["tool_calls"]        # la fausse réponse n'entre pas dans l'historique
+                    contenu = (relance.get("content") or "").strip()
+                else:
+                    if _echo_d_outil(contenu) or not contenu:
+                        contenu = (relance.get("content") or "").strip()
+                    message = {"role": "assistant", "content": contenu}
+                if parle and contenu and (retenue or portillon.echo) and not self.stop.is_set():
+                    parle(contenu)
+            elif retenue and parle and contenu and not self.stop.is_set():
+                parle(contenu)
+            if _echo_d_outil(contenu):
+                contenu = ""
+            message["content"] = contenu
+            if contenu:
+                reponse_totale.append(contenu)
+            if not appels or self.stop.is_set():
+                break
+            messages.append(message)
+            self.historique.append(message)
+            direct = None
+            for appel in appels:
+                fonction = appel["function"]
+                arguments = fonction.get("arguments") or {}
+                if isinstance(arguments, str):
+                    try:
+                        arguments = json.loads(arguments)
+                    except json.JSONDecodeError:
+                        arguments = {}
+                questions_avant, refus_avant = confirmations.demandes, outils.refus_compte
+                resultat = outils.executer(fonction["name"], arguments)
+                if journal:
+                    journal(fonction["name"], resultat)
+                message_outil = {"role": "tool", "content": resultat, "tool_name": fonction["name"]}
+                messages.append(message_outil)
+                self.historique.append(message_outil)
+                # une question de confirmation se dit mot pour mot : reformulée, le « oui / non » perd son objet
+                if outils.est_direct(fonction["name"]) or confirmations.demandes != questions_avant \
+                        or outils.refus_compte != refus_avant:
+                    direct = resultat
+            if direct is not None:
+                # Outil à réponse directe (image en cours) : son texte est la réponse, sans rappeler le
+                # modèle, pour ne pas recharger le cerveau pendant que ComfyUI occupe la VRAM.
+                reponse_totale.append(direct)
+                if decoupeur:
+                    decoupeur.ajouter(direct)
+                if sur_jeton:
+                    sur_jeton(direct)
+                break
+        else:
+            texte_boucle = "Je tourne en rond. Reformulez, je vous prie." if langue != "en" else "I'm going in circles. Could you rephrase?"
+            reponse_totale.append(texte_boucle)
+            if decoupeur:
+                decoupeur.ajouter(texte_boucle)
+
+        if self.stop.is_set():
+            # Coupé par la personne (elle a repris la parole) : le bout de réponse n'est ni rendu ni gardé. Vu en
+            # direct le 17/09 : « Oui, monsieur. », début d'une réponse coupée, entrait dans l'historique ; le modèle
+            # l'imitait ensuite (« tu m'entends ? » -> « Oui, monsieur. ») et n'appelait plus l'outil demandé.
+            if any(m.get("role") == "tool" for m in self.historique[debut:]):
+                self.historique.append({"role": "assistant", "content": "(réponse interrompue : la personne a repris la parole)"})
+            else:
+                del self.historique[debut:]
             self.dernier_echange = time.time()
-            return reponse
+            return ""
+        if decoupeur:
+            decoupeur.terminer()
+        reponse = " ".join(r for r in reponse_totale if r).strip() or ("…" if langue == "en" else f"Je n'ai rien à répondre, {TITRE}.")
+        reponse, titre_garde = titre_une_fois(reponse, titre_dit["initial"])
+        if titre_garde:
+            self.tour_titre = self.tours
+        self.historique.append({"role": "assistant", "content": reponse})
+        self.tours += 1
+        self.tours_depuis_souvenirs += 1
+        self.dernier_echange = time.time()
+        return reponse
 
     def ajouter_echange(self, question: str, reponse: str):
         """Un échange traité sans le modèle (commande, réflexe) entre quand même dans l'historique."""

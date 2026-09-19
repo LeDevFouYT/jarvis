@@ -128,8 +128,8 @@ class TelegramEntrant(threading.Thread):
         self.actions = actions or actions_reelles()
         self.arret = threading.Event()
         self.offset = self._lire_offset()
+        self._bot_lu = None
         self.en_ecoute = False
-        self.photos_attendues = 0          # une image demandée par Telegram : envoyée dès qu'elle est prête
         self.file: queue.Queue = queue.Queue()
         self.boutons: dict[str, dict] = {}  # jeton du bouton -> {evenement, choix, message_id, texte, apres, fin}
         self._numeros = itertools.count(1)
@@ -137,15 +137,24 @@ class TelegramEntrant(threading.Thread):
         threading.Thread(target=self._traiter_la_file, daemon=True, name="telegram-messages").start()
 
     # --- état persistant ---
+    @staticmethod
+    def _id_bot() -> str:
+        """Le numéro du bot (la partie publique du jeton, avant « : ») : la position de lecture lui est propre. Audit du
+        19/09 : après un changement de bot, l'ancienne position faisait ignorer les messages du nouveau."""
+        return (SECRETS.get("TELEGRAM_TOKEN") or "").split(":")[0]
+
     def _lire_offset(self) -> int:
         try:
-            return int(json.loads(ETAT.read_text(encoding="utf-8")).get("offset", 0))
+            etat = json.loads(ETAT.read_text(encoding="utf-8"))
+            if etat.get("bot") not in (None, self._id_bot()):
+                return 0
+            return int(etat.get("offset", 0))
         except Exception:
             return 0
 
     def _ecrire_offset(self):
         ETAT.parent.mkdir(parents=True, exist_ok=True)
-        ETAT.write_text(json.dumps({"offset": self.offset}), encoding="utf-8")
+        ETAT.write_text(json.dumps({"offset": self.offset, "bot": self._id_bot()}), encoding="utf-8")
 
     def _emettre(self, type_, **champs):
         self.sur_evenement({"type": type_, "t": time.time(), **champs})
@@ -286,6 +295,23 @@ class TelegramEntrant(threading.Thread):
                     self._emettre("telegram_erreur", message="jeton du bot refusé (401)")
                     self.arret.wait(60)
                     continue
+                if r.status_code != 200:
+                    # 409 (un autre Jarvis ou un webhook lit le même bot), 429 (trop de demandes), 5xx : avant
+                    # l'audit du 19/09 la boucle relançait aussitôt, sans fin, et occupait le processeur
+                    raison = {409: "un autre programme lit déjà ce bot (autre Jarvis ou webhook)",
+                              429: "Telegram demande de ralentir"}.get(r.status_code, f"Telegram répond {r.status_code}")
+                    self._emettre("telegram_erreur", message=raison)
+                    try:
+                        pause = int(r.json().get("parameters", {}).get("retry_after", 0))
+                    except Exception:
+                        pause = 0
+                    self.arret.wait(max(pause, 30 if r.status_code == 409 else 10))
+                    continue
+                if self._id_bot() and self._id_bot() != self._bot_lu:
+                    # nouveau bot réglé pendant que Jarvis tourne : on repart de sa propre position
+                    if self._bot_lu is not None:
+                        self.offset = 0
+                    self._bot_lu = self._id_bot()
                 for maj in r.json().get("result", []):
                     self.offset = maj["update_id"] + 1
                     self._ecrire_offset()
@@ -377,8 +403,12 @@ class TelegramEntrant(threading.Thread):
         if commande == "/image":
             if not argument:
                 return "Que faut-il dessiner ? Exemple : /image un phare sous l'orage", False, None
-            self.photos_attendues += 1
-            return a["image"](argument), False, None
+            from . import outils
+            outils.contexte("telegram", self.garde)     # l'image saura qu'elle est demandée par le téléphone
+            try:
+                return a["image"](argument), False, None
+            finally:
+                outils.contexte("", None)
         if commande == "/notes":
             return a["notes"](), True, "fr"
         if commande == "/rappel":
@@ -404,12 +434,6 @@ class TelegramEntrant(threading.Thread):
         finally:
             outils.contexte("", None)
         return reponse, True, langue or module_langue.detecter_texte(texte)
-
-    def image_prete(self, chemin: str, legende: str):
-        """Appelé par le serveur à chaque image générée : envoyée si Telegram l'attendait."""
-        if self.photos_attendues > 0:
-            self.photos_attendues -= 1
-            self.envoyer_photo(chemin, legende)
 
 
 def actions_reelles() -> dict:

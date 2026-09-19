@@ -108,12 +108,13 @@ def dernier_releve_avant(sujet: str, jour: str) -> tuple[str, dict] | None:
     return (ligne[0], json.loads(ligne[1])) if ligne else None
 
 
-def deja_vus(sujet: str, ids: list[str]) -> set[str]:
-    """Les identifiants déjà vus (commentaires lus par un briefing précédent), puis les marque vus."""
+def deja_vus(sujet: str, ids: list[str], marquer: bool = True) -> set[str]:
+    """Les identifiants déjà vus (commentaires lus par un briefing précédent), puis les marque vus (sauf marquer=False)."""
     with _verrou, connexion() as c:
         vus = {r[0] for r in c.execute(f"SELECT id FROM vus WHERE sujet = ? AND id IN ({','.join('?' * len(ids))})",
                                        (sujet, *ids))} if ids else set()
-        c.executemany("INSERT OR IGNORE INTO vus VALUES (?, ?, ?)", [(sujet, i, time.time()) for i in ids])
+        if marquer:
+            c.executemany("INSERT OR IGNORE INTO vus VALUES (?, ?, ?)", [(sujet, i, time.time()) for i in ids])
     return vus
 
 
@@ -166,6 +167,8 @@ def appeler(ressource: str, params: dict, ttl: float = 3600, analytics: bool = F
                     "accessNotConfigured": "l'API YouTube Data v3 n'est pas activée pour ce projet Google",
                     "commentsDisabled": "les commentaires sont désactivés sur cette vidéo",
                     "forbidden": "accès refusé par YouTube"}
+        if raison == "accessNotConfigured" and analytics:
+            messages[raison] = "l'API YouTube Analytics n'est pas activée pour ce projet Google (à activer à côté de l'API Data)"
         raise ErreurYouTube(messages.get(raison, f"YouTube a répondu {r.status_code} {raison}".strip()))
     corps = r.json()
     if ttl:

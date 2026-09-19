@@ -60,8 +60,9 @@ def capture() -> str:
     CAPTURES.mkdir(parents=True, exist_ok=True)
     chemin = CAPTURES / f"capture_{datetime.now():%Y%m%d_%H%M%S}.png"
     ImageGrab.grab(all_screens=True).save(chemin)
+    from . import source_courante
     sur_evenement({"type": "capture", "t": time.time(), "chemin": str(chemin),
-                   "url": f"/workspace/captures/{chemin.name}"})
+                   "url": f"/workspace/captures/{chemin.name}", "demande": source_courante()})
     return f"Capture enregistrée : {chemin.name} dans workspace/captures."
 
 

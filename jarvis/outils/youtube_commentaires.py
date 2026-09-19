@@ -19,6 +19,7 @@ def executer(video: str, action: str = "demandes") -> str:
     from ..youtube import commentaires
     from ..youtube.analyste import nombre_fr
     from . import panneaux
+    derniere_analyse.clear()
     try:
         if action == "lire":
             v = commentaires.lire(video, 30)

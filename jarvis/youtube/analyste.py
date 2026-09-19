@@ -91,6 +91,11 @@ def analyser(nom: str, n: int = 30) -> dict:
         f.ajouter("exceptions", f"{len(exceptions)} vidéo(s) au-dessus de 3 fois la médiane : {details}.", src,
                   nombre=len(exceptions), **{f"vues_{i + 1}": v["vues"] for i, v in enumerate(exceptions[:5])},
                   **{f"ratio_{i + 1}": round(v["vues"] / mediane, 1) for i, v in enumerate(exceptions[:5])})
+    elif not mediane:
+        # la moitié des vidéos n'ont encore aucune vue : « aucune au-dessus de 3 fois 0 » serait faux (audit du 19/09)
+        vues = sum(1 for v in videos if v["vues"] > 0)
+        f.ajouter("exceptions", f"La médiane est de 0 vue : {vues} vidéo(s) sur {len(videos)} ont des vues, la comparaison "
+                                f"à la médiane n'a pas encore de sens.", src, nombre=0, avec_vues=vues)
     else:
         f.ajouter("exceptions", f"Aucune vidéo au-dessus de 3 fois la médiane ({nombre_fr(3 * mediane)} vues).", src,
                   nombre=0, seuil=3 * mediane)
@@ -164,7 +169,11 @@ def analyser(nom: str, n: int = 30) -> dict:
             f.ajouter("titres", f"{len(avec)} titres contiennent {libelle} : médiane {nombre_fr(ma)} vues, contre {nombre_fr(ms)} sans.",
                       "titres et vues des vidéos", **{f"{motif}_titres": len(avec), f"{motif}_mediane_avec": ma, f"{motif}_mediane_sans": ms})
 
-    prive = _statistiques_privees(ch, videos, f)
+    try:
+        prive = _statistiques_privees(ch, videos, f)
+    except acces.ErreurYouTube as e:
+        # YouTube Analytics non activée, jeton révoqué… : les faits publics déjà calculés restent (audit du 19/09)
+        prive = f"indisponibles ({e}) : statistiques publiques seulement"
     return {"chaine": {k: ch.get(k) for k in ("id", "titre", "handle", "abonnes", "source")}, "periode": periode,
             "source": src, "faits": f.liste, "prive": prive, "mediane": mediane,
             "videos": [{**v, "exception": v in exceptions, "ratio": round(v["vues"] / mediane, 2) if mediane else None} for v in videos],

@@ -1,5 +1,15 @@
 # Nouveautés de Jarvis
 
+## 🔧 Le nettoyage continue : téléphone, micro et YouTube
+
+- **Telegram, enfin sans surprise.** Une réponse envoyée à ton téléphone n'est plus coupée si quelqu'un dit « Hey Jarvis » à la maison. Une image, une capture ou une description demandée depuis le téléphone arrive sur le téléphone, pas dans les haut-parleurs du salon.
+- **Change de casque quand tu veux.** Casque Bluetooth débranché, rebranché ou remplacé : Jarvis s'en rend compte tout seul et continue d'écouter et de parler, sans redémarrage.
+- **Il dit quand il a un souci.** Si son cerveau (Ollama) ne répond pas, Jarvis te le dit au lieu de rester bloqué sur « réflexion ».
+- **« Écris-moi un poème »** : il te le récite, il ne le tape plus dans la fenêtre ouverte. Et « quelle note as-tu eue ? » n'est plus pris pour une demande de prise de notes.
+- **Rangement plus sûr** : un fichier ouvert dans Word ou Excel reste à sa place, sans doublon, et Jarvis te le signale. Les dossiers de projets de code ne sont jamais rangés.
+- **Les calculs impossibles** (« 9 puissance 9 puissance 9 ») répondent instantanément au lieu de figer Jarvis.
+- **YouTube plus fiable** : l'analyse de ta chaîne ne plante plus si les statistiques privées sont indisponibles, le briefing ne rate plus une vidéo publiée le soir, et changer de compte Google fonctionne proprement.
+
 ## 🛠️ Grand nettoyage : Jarvis plus fiable au quotidien
 
 On a passé tout Jarvis au peigne fin. Voici ce qui change pour toi :

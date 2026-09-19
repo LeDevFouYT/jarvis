@@ -47,7 +47,10 @@ def briefing(ma_chaine: str | None = None, concurrents: list[str] | None = None)
             else:
                 jour_prec, avant = precedent
                 depuis = datetime.fromisoformat(jour_prec).replace(tzinfo=PARIS)
-                nouvelles = [v for v in videos if v["timestamp"] and datetime.fromtimestamp(v["timestamp"], PARIS) >= depuis + timedelta(days=1)]
+                # nouvelles depuis l'heure exacte du relevé (une vidéo publiée à 18 h le jour d'un briefing de 8 h
+                # tombait entre deux relevés et n'apparaissait nulle part, audit du 19/09)
+                releve_ts = avant.get("quand") or (depuis + timedelta(days=1)).timestamp()
+                nouvelles = [v for v in videos if v["timestamp"] and v["timestamp"] > releve_ts and v["id"] not in avant.get("vues", {})]
                 if ch.get("abonnes") is not None and avant.get("abonnes") is not None:
                     ecart = ch["abonnes"] - avant["abonnes"]
                     f.ajouter("ma chaîne", f"{ch['titre']} : {nombre_fr(ch['abonnes'])} abonnés, {'+' if ecart >= 0 else ''}{nombre_fr(ecart)} "
@@ -68,11 +71,13 @@ def briefing(ma_chaine: str | None = None, concurrents: list[str] | None = None)
 
             # commentaires nouveaux qui demandent quelque chose
             recentes = [v for v in videos if v["timestamp"] and time.time() - v["timestamp"] < 30 * 86400][:3 if ch["source"] != "api" else 5]
-            nouveaux = []
+            nouveaux, a_marquer = [], []
             for v in recentes:
                 lus = donnees.commentaires(v["id"], 100)
-                vus = acces.deja_vus(f"commentaires:{ch['id']}", [c["id"] for c in lus if c.get("id")])
+                ids = [c["id"] for c in lus if c.get("id")]
+                vus = acces.deja_vus(f"commentaires:{ch['id']}", ids, marquer=False) | set(a_marquer)   # ni déjà montrés, ni en double
                 nouveaux += [{**c, "video": v["titre"]} for c in lus if c.get("id") not in vus and commentaires.est_demande(c["texte"])]
+                a_marquer += ids
             if nouveaux:
                 themes = commentaires.regrouper(nouveaux[:80]) if len(nouveaux) >= 3 else []
                 texte = f"{len(nouveaux)} nouveau(x) commentaire(s) qui demandent quelque chose"
@@ -88,8 +93,12 @@ def briefing(ma_chaine: str | None = None, concurrents: list[str] | None = None)
             else:
                 f.ajouter("commentaires", "Aucun nouveau commentaire qui demande quelque chose.", "commentaires publics des vidéos récentes",
                           demandes_nouvelles=0)
+            # marqués vus seulement maintenant : si le regroupement plantait, ils étaient perdus pour tous les briefings
+            acces.deja_vus(f"commentaires:{ch['id']}", a_marquer)
         except acces.ErreurYouTube as e:
             f.ajouter("ma chaîne", f"Chaîne indisponible : {e}.", "YouTube")
+        except Exception as e:
+            f.ajouter("ma chaîne", f"Chaîne indisponible pour l'instant ({type(e).__name__}).", "YouTube")
     else:
         f.ajouter("ma chaîne", "Aucune chaîne réglée : indiquez la vôtre dans les Réglages (section YouTube).", "Réglages")
 
@@ -105,8 +114,8 @@ def briefing(ma_chaine: str | None = None, concurrents: list[str] | None = None)
                     ratio = v["vues"] / mediane
                     if not meilleur or ratio > meilleur[0]:
                         meilleur = (ratio, ch, v, mediane)
-        except acces.ErreurYouTube:
-            continue
+        except Exception:
+            continue                   # un concurrent introuvable ou une page YouTube en panne ne gâche pas le briefing
     if concurrents:
         if meilleur:
             ratio, ch, v, mediane = meilleur

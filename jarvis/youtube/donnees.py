@@ -43,6 +43,8 @@ def _en_cache(cle: str, ttl: float, fonction):
     if ligne and ligne[1] > time.time():
         return json.loads(ligne[0])
     valeur = fonction()
+    if not valeur:
+        return valeur              # un résultat vide (réseau coupé, yt-dlp en panne) n'est pas gardé une heure (audit du 19/09)
     with acces._verrou, acces.connexion() as c:
         c.execute("INSERT OR REPLACE INTO reponses VALUES (?, ?, ?)", (cle, json.dumps(valeur, ensure_ascii=False), time.time() + ttl))
     return valeur
@@ -140,7 +142,12 @@ def videos_recentes(ch: dict, n: int = 30) -> list[dict]:
 
 def _videos_api(ch: dict, n: int) -> list[dict]:
     uploads = ch.get("uploads") or ("UU" + ch["id"][2:])
-    liste = acces.appeler("playlistItems", {"part": "contentDetails", "playlistId": uploads, "maxResults": n}, ttl=3600)
+    try:
+        liste = acces.appeler("playlistItems", {"part": "contentDetails", "playlistId": uploads, "maxResults": n}, ttl=3600)
+    except ErreurYouTube as e:
+        if "playlistNotFound" in str(e):
+            return []              # une chaîne sans aucune vidéo publique n'a pas encore de playlist de mises en ligne
+        raise
     ids = [i["contentDetails"]["videoId"] for i in liste.get("items", [])][:n]
     if not ids:
         return []

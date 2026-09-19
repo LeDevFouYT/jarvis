@@ -26,6 +26,7 @@ def executer(chaine: str, nombre: int = 30) -> str:
         chaine = acces.REGLAGES.get("ma_chaine", "")
         if not chaine:
             return "Aucune chaîne réglée : indiquez la vôtre dans les Réglages, section YouTube."
+    derniere_analyse.clear()           # une analyse ratée ne laisse pas les faits de la précédente à vérifier
     try:
         a = analyste.analyser(chaine, nombre or 30)
     except acces.ErreurYouTube as e:

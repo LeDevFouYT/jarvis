@@ -100,6 +100,15 @@ def resoudre(nom: str) -> Path | None:
     return None
 
 
+def _est_la_demo(d: Path) -> bool:
+    """Le dossier de démonstration de Jarvis (workspace/demo_rangement) se range toujours, même quand Jarvis est
+    lui-même un dépôt git (le PC de développement)."""
+    try:
+        return d.resolve() == DEMO.resolve() or DEMO.resolve() in d.resolve().parents
+    except OSError:
+        return False
+
+
 def refus(dossier: Path) -> str | None:
     """Une raison de refuser, ou None si le dossier peut être rangé."""
     d = dossier.resolve()
@@ -117,7 +126,8 @@ def refus(dossier: Path) -> str | None:
         return "c'est un dossier système"
     if RACINE.resolve() == d or RACINE.resolve() in d.parents and d != DEMO.resolve() and DEMO.resolve() not in d.parents:
         return "c'est le dossier de Jarvis"
-    if (d / ".git").exists():
+    if any((p / ".git").exists() for p in (d, *d.parents)) and not _est_la_demo(d):
+        # le sous-dossier d'un projet aussi (audit du 19/09 : « range F:\Remotion_YT\public » cassait le projet)
         return "c'est un projet de programmation (dossier .git), son organisation compte"
     return None
 
@@ -162,20 +172,40 @@ def ranger(dossier: Path) -> dict:
     JOURNAUX.mkdir(parents=True, exist_ok=True)
     fichier_journal = JOURNAUX / f"{datetime.now():%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:4]}.json"
     compte: dict[str, int] = {}
+    ouverts: list[str] = []
     for source, cible in mouvements:
         for parent in (cible.parent.parent, cible.parent):
             if not parent.exists():
                 parent.mkdir()
                 journal["dossiers_crees"].append(str(parent))
         cible = _destination_libre(cible)
-        shutil.move(str(source), str(cible))
+        try:
+            # un renommage, jamais une copie : un fichier ouvert (Word, Excel…) refuse d'être renommé et reste à sa
+            # place. shutil.move le copiait puis n'arrivait pas à effacer l'original : un doublon que « annule » ne
+            # retirait pas (audit du 19/09). Le rangement se fait toujours dans le même dossier, donc le même disque.
+            os.rename(source, cible)
+        except OSError:
+            ouverts.append(source.name)
+            continue
         journal["mouvements"].append({"de": str(source), "vers": str(cible)})
         compte[famille(source)] = compte.get(famille(source), 0) + 1
         fichier_journal.write_text(json.dumps(journal, ensure_ascii=False, indent=1), encoding="utf-8")  # à chaque pas : jamais perdu
+    for d in reversed(journal["dossiers_crees"]):            # dossiers créés pour des fichiers restés en place
+        try:
+            Path(d).rmdir()
+            journal["dossiers_crees"].remove(d)
+        except OSError:
+            pass
+    fichier_journal.write_text(json.dumps(journal, ensure_ascii=False, indent=1), encoding="utf-8")
+    deplaces = len(journal["mouvements"])
     resume = ", ".join(f"{n} {fam.lower()}" for fam, n in sorted(compte.items(), key=lambda x: -x[1]))
-    return {"ok": True, "deplaces": len(mouvements), "familles": compte, "journal": str(fichier_journal),
-            "message": f"{dossier.name} est rangé : {len(mouvements)} fichiers classés par type et par mois ({resume}). "
-                       f"Dites « annule » pour tout remettre."}
+    message = (f"{dossier.name} est rangé : {deplaces} fichiers classés par type et par mois ({resume}). "
+               f"Dites « annule » pour tout remettre.")
+    if ouverts:
+        message += (f" {len(ouverts)} fichier{'s' if len(ouverts) > 1 else ''} ouvert{'s' if len(ouverts) > 1 else ''} dans un "
+                    f"programme {'sont restés' if len(ouverts) > 1 else 'est resté'} à sa place : {', '.join(ouverts[:3])}.")
+    return {"ok": True, "deplaces": deplaces, "familles": compte, "journal": str(fichier_journal), "ouverts": ouverts,
+            "message": message}
 
 
 def dernier_journal() -> Path | None:

@@ -383,19 +383,28 @@ class Parleur:
             self.en_lecture.set()
             self.arret_lecture.clear()
             try:
-                with sd.OutputStream(samplerate=FREQ, channels=1, dtype="float32",
-                                     device=REGLAGES.get("peripherique_sortie"), blocksize=BLOC) as flux:
-                    for i in range(0, len(audio), BLOC):
-                        if self.arret_lecture.is_set() or generation != self.generation:
-                            break
-                        bloc = audio[i:i + BLOC]
-                        if len(bloc) < BLOC:
-                            bloc = np.pad(bloc, (0, BLOC - len(bloc)))
-                        if prise_sonore != prise:
-                            prise_sonore = prise
-                            _emettre("premier_son", prise=prise, texte=texte)
-                        flux.write(bloc.reshape(-1, 1))
-                        _emettre("niveau", prise=prise, valeur=round(float(np.sqrt(np.mean(bloc ** 2))) * 4, 3))
+                for essai in (1, 2):
+                    try:
+                        with sd.OutputStream(samplerate=FREQ, channels=1, dtype="float32",
+                                             device=REGLAGES.get("peripherique_sortie"), blocksize=BLOC) as flux:
+                            for i in range(0, len(audio), BLOC):
+                                if self.arret_lecture.is_set() or generation != self.generation:
+                                    break
+                                bloc = audio[i:i + BLOC]
+                                if len(bloc) < BLOC:
+                                    bloc = np.pad(bloc, (0, BLOC - len(bloc)))
+                                if prise_sonore != prise:
+                                    prise_sonore = prise
+                                    _emettre("premier_son", prise=prise, texte=texte)
+                                flux.write(bloc.reshape(-1, 1))
+                                _emettre("niveau", prise=prise, valeur=round(float(np.sqrt(np.mean(bloc ** 2))) * 4, 3))
+                        break
+                    except sd.PortAudioError:
+                        if essai == 2:
+                            raise
+                        # casque débranché ou changé : la liste des périphériques est relue, la phrase redite une fois
+                        from .oreilles import rafraichir_peripheriques
+                        rafraichir_peripheriques()
             except Exception as e:
                 _emettre("voix_erreur", message=f"lecture : {type(e).__name__} : {e}")
             finally:

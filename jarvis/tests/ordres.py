@@ -174,15 +174,22 @@ def pour_de_vrai(v: Verifs):
         avant = {f["hwnd"] for f in F.lister_fenetres()}
         reponse = action()
         nouvelle = None
-        if attendre(lambda: [f for f in F.lister_fenetres() if f["hwnd"] not in avant and programme in f["programme"]], 8):
-            nouvelle = next(f for f in F.lister_fenetres() if f["hwnd"] not in avant and programme in f["programme"])
+        # la fenêtre qui porte le titre attendu : dans la batterie complète, une fenêtre fermée à l'étape d'avant pouvait
+        # encore être listée et passer pour la nouvelle (échec « Sans titre » du 19/09, jamais reproduit seul)
+        def candidates():
+            return [f for f in F.lister_fenetres() if f["hwnd"] not in avant and programme in f["programme"]
+                    and (not titre or titre in f["titre"])]
+        if attendre(candidates, 8):
+            nouvelle = candidates()[0]
         devant = bool(nouvelle) and attendre(lambda: user32.GetForegroundWindow() == nouvelle["hwnd"], 4)
         v.ok(nouvelle and (not titre or titre in nouvelle["titre"]), f"{libelle} : la fenêtre s'ouvre", (reponse, nouvelle and nouvelle["titre"]))
         v.ok(devant, f"{libelle} : elle passe au premier plan")
         if nouvelle:
             pid = wintypes.DWORD()
             user32.GetWindowThreadProcessId(wintypes.HWND(nouvelle["hwnd"]), ctypes.byref(pid))
-            psutil.Process(pid.value).kill()
+            processus = psutil.Process(pid.value)
+            processus.kill()
+            processus.wait(5)
 
     essayer("« ouvre le bloc-notes »", lambda: ouvrir_application.executer("bloc-notes"), "notepad", "Sans titre")
     bureau = ouvrir_fichier.dossiers("bureau")
