@@ -17,7 +17,16 @@ PASSERELLE = REGLAGES.get("passerelle", "").rstrip("/")
 SECRET = SECRETS.get("MAISON_SECRET", "") or REGLAGES.get("secret", "")
 OLLAMA = CONFIG["ollama"]["url"]
 MODELES_AUTORISES = set(REGLAGES.get("modeles", [CONFIG["cerveau"]["modele"], CONFIG["vision"]["modele"]]))
+LIMITE_OCTETS = 48 * 1024 * 1024        # au-delà, le JSON de la passerelle devient déraisonnable
 journal = logging.getLogger("maison")
+
+
+def _carte(nom: str):
+    """Un seul gros modèle à la fois sur la carte, client ou pas : le cerveau rend la place et revient après."""
+    from . import carte
+    from .cerveau import CERVEAU
+    CERVEAU.decharger()
+    return carte.Occupation(nom)
 sur_evenement = lambda e: None
 etat = {"actif": False, "en_ligne": False, "travaux": 0, "secondes": 0.0, "dernier": None, "erreur": None}
 
@@ -25,6 +34,9 @@ etat = {"actif": False, "en_ligne": False, "travaux": 0, "secondes": 0.0, "derni
 def _executer(travail: dict) -> dict:
     if "image" in travail:
         return _dessiner(travail["image"])
+    for genre, faire in LOURDS.items():                # vidéo, sculpture 3D, miniatures : la carte d'ici, payée
+        if genre in travail:
+            return faire(travail[genre])
     corps = dict(travail.get("chat") or {})
     if corps.get("model") not in MODELES_AUTORISES:
         return {"error": f"modèle non servi ici : {corps.get('model')}"}
@@ -54,6 +66,65 @@ def _dessiner(demande: dict) -> dict:
     except Exception as e:
         return {"error": f"{type(e).__name__} : {e}", "secondes_facturees": round(time.time() - t, 1)}
     return {"png": base64.b64encode(png).decode(), "secondes": round(secondes, 1), "secondes_facturees": round(secondes, 3)}
+
+
+def _fichier_rendu(chemin, secondes: float, cle: str, extra: dict | None = None) -> dict:
+    """Un fichier produit ici, rendu au client en base64. Au-delà de la taille limite, on refuse proprement
+    plutôt que d'étouffer la passerelle avec cent mégaoctets de JSON."""
+    import base64
+    from pathlib import Path as _P
+    donnees = _P(chemin).read_bytes()
+    if len(donnees) > LIMITE_OCTETS:
+        return {"error": f"fichier trop lourd ({len(donnees) // 1048576} Mo) pour être envoyé",
+                "secondes_facturees": round(secondes, 3)}
+    return {cle: base64.b64encode(donnees).decode(), "octets": len(donnees),
+            "secondes": round(secondes, 1), "secondes_facturees": round(secondes, 3), **(extra or {})}
+
+
+def _tourner_video(demande: dict) -> dict:
+    """Une vidéo pour un client : Wan 2.2 sur la carte d'ici. Quatre à cinq minutes, facturées au temps réel."""
+    from .outils import generer_video
+    t = time.time()
+    try:
+        with _carte("vidéo d'un client"):
+            chemin = generer_video.rendre(demande.get("prompt", ""), float(demande.get("secondes", 4)))
+    except Exception as e:
+        return {"error": f"{type(e).__name__} : {e}", "secondes_facturees": round(time.time() - t, 1)}
+    return _fichier_rendu(chemin, time.time() - t, "mp4")
+
+
+def _sculpter(demande: dict) -> dict:
+    """Une sculpture 3D pour un client : image puis Hunyuan3D, rendue en .glb."""
+    from .outils import hologramme
+    t = time.time()
+    try:
+        with _carte("sculpture d'un client"):
+            chemin = hologramme.sculpter(demande.get("objet", ""), demande.get("prompt", ""))
+    except Exception as e:
+        return {"error": f"{type(e).__name__} : {e}", "secondes_facturees": round(time.time() - t, 1)}
+    return _fichier_rendu(chemin, time.time() - t, "glb", {"objet": demande.get("objet", "")})
+
+
+def _miniatures(demande: dict) -> dict:
+    """Trois miniatures pour un client : mêmes images que celles de l'auteur, titre incrusté compris."""
+    import base64
+    from pathlib import Path as _P
+    from .outils import miniatures
+    t = time.time()
+    try:
+        with _carte("miniatures d'un client"):
+            resultat = miniatures.creer(demande.get("sujet", ""), demande.get("titre", ""))
+            chemins = resultat.get("chemins", [])
+    except Exception as e:
+        return {"error": f"{type(e).__name__} : {e}", "secondes_facturees": round(time.time() - t, 1)}
+    images = [base64.b64encode(_P(c).read_bytes()).decode() for c in chemins]
+    poids = sum(len(x) for x in images)
+    if poids > LIMITE_OCTETS:
+        return {"error": "miniatures trop lourdes pour être envoyées", "secondes_facturees": round(time.time() - t, 1)}
+    return {"images": images, "secondes": round(time.time() - t, 1), "secondes_facturees": round(time.time() - t, 3)}
+
+
+LOURDS = {"video": _tourner_video, "modele3d": _sculpter, "miniatures": _miniatures}
 
 
 def boucle(arret: threading.Event):

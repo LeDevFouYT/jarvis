@@ -122,6 +122,51 @@ def _montrer(chemin: Path, objet: str, chrono: dict, depuis_cache: bool, demande
                    "chrono": dict(chrono), "demande": demande})
 
 
+def _executer_cloud(objet: str, prompt: str, chemin: Path, demande: str) -> str:
+    """Mode cloud : la sculpture est faite sur la machine de l'auteur, le .glb revient ici et s'affiche."""
+    from . import travaux_cloud
+
+    def travail():
+        t = time.time()
+        try:
+            sur_evenement({"type": "hologramme_etape", "t": time.time(), "objet": objet, "etape": "sculpture"})
+            sortie = travaux_cloud.demander("modele3d", {"objet": objet, "prompt": prompt}, delai=1800)
+            chemin.parent.mkdir(parents=True, exist_ok=True)
+            import base64
+            chemin.write_bytes(base64.b64decode(sortie["glb"]))
+            _montrer(chemin, objet, {"total": round(time.time() - t, 2), "distant": sortie.get("secondes")},
+                     False, demande)
+        except Exception as e:
+            sur_evenement({"type": "hologramme_erreur", "t": time.time(), "objet": objet,
+                           "message": str(e), "demande": demande})
+
+    threading.Thread(target=travail, daemon=True, name="hologramme-cloud").start()
+    return f"Je sculpte {objet} sur la machine distante, monsieur. Comptez quelques minutes."
+
+
+def sculpter(objet: str, prompt: str = "", chrono: dict | None = None) -> Path:
+    """Dessine puis sculpte l'objet, en synchrone, et rend le chemin du .glb.
+
+    Ni verrou, ni carte, ni cerveau : l'appelant s'en occupe. Séparé le 22/09 pour que l'agent maison puisse
+    sculpter pour un client cloud, qui paie ses minutes comme les autres. Un objet déjà sculpté est rendu tel quel.
+    """
+    chrono = chrono if chrono is not None else {}
+    chemin = DOSSIER / f"{nom_fichier(objet)}.glb"
+    if chemin.exists():
+        chrono["cache"] = True
+        return chemin
+    ok, raison = outils_3d_presents()
+    if not ok:
+        raise RuntimeError(raison)
+    t = time.time()
+    image = generer_image.dessiner(_PROMPT.format(sujet=prompt or objet), "carre", delai=600)
+    chrono["dessin"] = round(time.time() - t, 2)
+    generer_image.liberer_avant()                 # ComfyUI rend la carte à Hunyuan3D
+    time.sleep(1)
+    _sculpter(image, chemin, chrono)
+    return chemin
+
+
 def executer(objet: str, prompt: str = "") -> str:
     from .. import carte, cerveau
     from ..cerveau import CERVEAU
@@ -136,7 +181,7 @@ def executer(objet: str, prompt: str = "") -> str:
         _montrer(chemin, objet, {"total": round(time.time() - debut, 2), "cache": True}, True, demande)
         return f"Voici {objet}, monsieur."
     if cerveau.MODE == "cloud":
-        return "La sculpture 3D demande la carte graphique de cette machine : elle n'est pas disponible en mode cloud."
+        return _executer_cloud(objet, prompt, chemin, demande)
     ok, raison = outils_3d_presents()
     if not ok:
         return f"Je ne peux pas sculpter d'hologramme : {raison}."
@@ -154,13 +199,8 @@ def executer(objet: str, prompt: str = "") -> str:
             CERVEAU.decharger()                       # la carte pour ComfyUI seul
             generer_image.liberer_avant()
             chrono["dechargement_cerveau"] = round(time.time() - t, 2)
-            t = time.time()
-            image = generer_image.dessiner(_PROMPT.format(sujet=prompt or objet), "carre", delai=600)
-            chrono["dessin"] = round(time.time() - t, 2)
             sur_evenement({"type": "hologramme_etape", "t": time.time(), "objet": objet, "etape": "sculpture"})
-            generer_image.liberer_avant()             # ComfyUI rend la carte à Hunyuan3D
-            time.sleep(1)
-            _sculpter(image, chemin, chrono)
+            sculpter(objet, prompt, chrono)           # dessin, puis Hunyuan3D
             chrono["total"] = round(time.time() - debut, 2)
             _noter_mesure(objet, chrono)
             _montrer(chemin, objet, chrono, False, demande)

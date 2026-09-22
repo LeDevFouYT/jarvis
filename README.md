@@ -128,7 +128,7 @@ Réglages › Telegram guide en quatre étapes : créer le bot avec @BotFather, 
 - La vérification des chiffres YouTube dit si un chiffre ou une phrase est faux ; elle ne corrige pas la réponse déjà dite.
 - Le mot de réveil est fragile avec de la musique ou une télévision en fond. Le modèle attend « Hey Jarvis » en anglais ; « Jarvis » seul n'est pas garanti. Seuil réglable dans `oreilles.seuil`.
 - Whisper invente parfois une phrase sur un souffle ; les classiques sont filtrés par une liste, pas tous.
-- Le mode cloud demande la passerelle (dossier `passerelle/`) déployée sur un serveur : le client paie des minutes de calcul, le cerveau et la vision passent par là vers une carte graphique (celle de l'auteur en mode maison, ou RunPod), l'écoute et la voix restent sur sa machine, les images ne sont pas disponibles.
+- Le mode cloud demande la passerelle (dossier `passerelle/`) déployée sur un serveur : le client paie des minutes de calcul, et tout ce qui a besoin d'une carte graphique passe par là — le cerveau, la vision, les images, mais aussi les vidéos, les sculptures 3D et les miniatures. L'écoute et la voix restent sur sa machine. Ce qui traverse n'est qu'une description : la machine qui calcule n'exécute jamais d'ordre venu d'un client.
 
 ## Être à 100 % local
 

@@ -202,10 +202,45 @@ def creer(sujet: str, titre: str = "", progression=lambda etape: None) -> dict:
     return {**d, "chemins": [str(c) for c in chemins], "urls": [f"/workspace/miniatures/{c.name}" for c in chemins], "chrono": chrono}
 
 
+def _executer_cloud(sujet: str, titre: str) -> str:
+    """Mode cloud : les trois miniatures sont dessinées sur la machine de l'auteur et reviennent ici.
+
+    Mêmes événements et même panneau que le chemin local : de l'extérieur, rien ne distingue les deux.
+    """
+    import base64
+    from . import travaux_cloud
+
+    def travail():
+        debut = time.time()
+        try:
+            sur_evenement({"type": "miniatures_debut", "t": time.time(), "sujet": sujet})
+            sortie = travaux_cloud.demander("miniatures", {"sujet": sujet, "titre": titre}, delai=1200)
+            DOSSIER.mkdir(parents=True, exist_ok=True)
+            chemins, urls = [], []
+            for n, image in enumerate(sortie.get("images", []), start=1):
+                chemin = DOSSIER / f"miniature_{datetime.now():%Y%m%d_%H%M%S}_{n}.png"
+                chemin.write_bytes(base64.b64decode(image))
+                chemins.append(str(chemin))
+                urls.append(f"/workspace/miniatures/{chemin.name}")
+            from . import panneaux
+            panneaux.images(f"Miniatures · {titre or sujet}",
+                            [{"url": u, "legende": f"variante {n}"} for n, u in enumerate(urls, 1)])
+            sur_evenement({"type": "miniatures", "t": time.time(), "titre": titre or sujet, "chemins": chemins,
+                           "urls": urls, "prompts": [], "duree": round(time.time() - debut, 1),
+                           "chrono": {"distant": sortie.get("secondes")}, "source": ""})
+        except Exception as e:
+            sur_evenement({"type": "miniatures_erreur", "t": time.time(), "message": str(e), "source": ""})
+
+    threading.Thread(target=travail, daemon=True, name="miniatures-cloud").start()
+    return "Je les prépare sur la machine distante, monsieur. Comptez deux minutes."
+
+
 def executer(sujet: str, titre: str = "") -> str:
-    from .. import outils
+    from .. import cerveau, outils
     from ..cerveau import TITRE
     from . import generer_image as G
+    if cerveau.MODE == "cloud":                 # pas de carte ici : la machine de l'auteur dessine, c'est facturé
+        return _executer_cloud(sujet, titre)
     if not G.comfyui_present() and not G.REGLAGES.get("lanceur"):
         return "ComfyUI n'est pas lancé. Demandez-moi d'ouvrir ComfyUI, puis réessayez."
     if not _verrou.acquire(blocking=False):

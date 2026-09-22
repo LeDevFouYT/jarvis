@@ -180,6 +180,70 @@ def _recuperer(prompt_id: str) -> Path:
     raise RuntimeError("ComfyUI n'a produit aucune vidéo")
 
 
+def rendre(prompt: str, secondes: float = 4.0, surAvance=None, chrono: dict | None = None) -> Path:
+    """Le rendu lui-même, en synchrone : dessine un premier plan, anime, rend le chemin du fichier.
+
+    Ni verrou, ni carte, ni cerveau : c'est l'appelant qui s'en occupe (l'outil local le fait dans son fil,
+    l'agent maison le fait pour un client). Séparé le 22/09 pour que les clients cloud aient droit à la vidéo,
+    puisqu'ils paient leurs minutes comme les autres.
+    """
+    chrono = chrono if chrono is not None else {}
+    client = uuid.uuid4().hex
+    t = time.time()
+    image_comfy = ""
+    if PAR_IMAGE:
+        try:
+            if surAvance:
+                surAvance(None, "premier plan")
+            dessin = generer_image.dessiner(prompt + FINITION, "paysage", delai=300)
+            image_comfy = _deposer(dessin)
+            chrono["image"] = round(time.time() - t, 1)
+        except Exception as e:                              # pas d'image : Wan se débrouillera avec le texte
+            journal.warning("vidéo : pas d'image de départ (%s)", e)
+    t = time.time()
+    r = requests.post(f"{URL}/prompt", json={"prompt": graphe(prompt, secondes, random.randint(1, 2 ** 31), image_comfy),
+                                             "client_id": client}, timeout=30)
+    if r.status_code != 200:
+        raise RuntimeError(f"ComfyUI a refusé le graphe Wan ({r.status_code}) : {r.text[:200]}")
+    prompt_id = r.json()["prompt_id"]
+    premier = [0.0]
+
+    def avance_mesuree(pourcent, etape):
+        if pourcent is not None and not premier[0]:
+            premier[0] = time.time()
+            chrono["chargement_modele"] = round(premier[0] - t, 1)
+        if surAvance:
+            surAvance(pourcent, etape)
+
+    _suivre(client, prompt_id, avance_mesuree, DELAI)
+    chemin = _recuperer(prompt_id)
+    chrono["rendu"] = round(time.time() - (premier[0] or t), 1)
+    chrono["comfyui"] = round(time.time() - t, 2)
+    return chemin
+
+
+def _executer_cloud(prompt: str, secondes: float, demande: str) -> str:
+    """Mode cloud : la vidéo est tournée sur la machine de l'auteur, et revient ici. Compté en minutes."""
+    from . import travaux_cloud
+
+    def travail():
+        t = time.time()
+        try:
+            sur_evenement({"type": "video_debut", "t": time.time(), "prompt": prompt, "secondes": secondes,
+                           "demande": demande})
+            sortie = travaux_cloud.demander("video", {"prompt": prompt, "secondes": secondes}, delai=1500)
+            chemin = travaux_cloud.ecrire(sortie["mp4"], SORTIE, "video", ".mp4")
+            sur_evenement({"type": "video_prete", "t": time.time(), "prompt": prompt, "chemin": str(chemin),
+                           "url": f"/workspace/videos/{chemin.name}", "duree": round(secondes, 1),
+                           "chrono": {"total": round(time.time() - t, 1), "distant": sortie.get("secondes")},
+                           "demande": demande})
+        except Exception as e:
+            sur_evenement({"type": "video_ia_erreur", "t": time.time(), "message": str(e), "demande": demande})
+
+    threading.Thread(target=travail, daemon=True, name="video-cloud").start()
+    return "Je la tourne sur la machine distante, monsieur. Comptez quatre à cinq minutes."
+
+
 def executer(prompt: str, secondes: float = 4.0) -> str:
     from .. import carte, cerveau
     from ..cerveau import CERVEAU
@@ -188,7 +252,7 @@ def executer(prompt: str, secondes: float = 4.0) -> str:
     if not prompt:
         return "Que dois-je filmer, monsieur ?"
     if cerveau.MODE == "cloud":
-        return "Tourner une vidéo demande la carte graphique de cette machine : impossible en mode cloud."
+        return _executer_cloud(prompt, secondes, source_courante())
     if not generer_image.comfyui_present():
         return "ComfyUI n'est pas lancé. Demandez-moi d'ouvrir ComfyUI, puis réessayez."
     if not _verrou.acquire(blocking=False):
@@ -208,26 +272,9 @@ def executer(prompt: str, secondes: float = 4.0) -> str:
             CERVEAU.decharger()                                  # la carte pour Wan seul (10 Go de poids)
             generer_image.liberer_avant()
             chrono["dechargement_cerveau"] = round(time.time() - t, 2)
-            # d'abord une vraie image (20 s) : Wan anime bien mieux une image qu'un texte seul
-            image_comfy = ""
-            if PAR_IMAGE:
-                try:
-                    sur_evenement({"type": "video_avance", "t": time.time(), "pourcent": None, "etape": "premier plan"})
-                    dessin = generer_image.dessiner(prompt + FINITION, "paysage", delai=300)
-                    image_comfy = _deposer(dessin)
-                    chrono["image"] = round(time.time() - t, 1)
-                except Exception as e:                            # pas d'image : Wan se débrouillera avec le texte
-                    journal.warning("vidéo : pas d'image de départ (%s)", e)
-            t = time.time()
-            r = requests.post(f"{URL}/prompt", json={"prompt": graphe(prompt, secondes, random.randint(1, 2 ** 31),
-                                                                     image_comfy),
-                                                     "client_id": client}, timeout=30)
-            if r.status_code != 200:
-                raise RuntimeError(f"ComfyUI a refusé le graphe Wan ({r.status_code}) : {r.text[:200]}")
-            prompt_id = r.json()["prompt_id"]
             dernier = [0.0]
 
-            def avance(pourcent, etape):
+            def avance(pourcent, etape):                        # la barre de progression du HUD, sans l'inonder
                 if pourcent is not None:
                     if pourcent - dernier[0] < 2 and pourcent < 100:
                         return
@@ -235,18 +282,7 @@ def executer(prompt: str, secondes: float = 4.0) -> str:
                 sur_evenement({"type": "video_avance", "t": time.time(), "pourcent": pourcent, "etape": etape,
                                "secondes_ecoulees": round(time.time() - debut, 1)})
 
-            premier = [0.0]                                      # quand le premier pas de rendu arrive : modèle chargé
-
-            def avance_mesuree(pourcent, etape):
-                if pourcent is not None and not premier[0]:
-                    premier[0] = time.time()
-                    chrono["chargement_modele"] = round(premier[0] - t, 1)
-                avance(pourcent, etape)
-
-            _suivre(client, prompt_id, avance_mesuree, DELAI)
-            chemin = _recuperer(prompt_id)
-            chrono["rendu"] = round(time.time() - (premier[0] or t), 1)
-            chrono["comfyui"] = round(time.time() - t, 2)
+            chemin = rendre(prompt, secondes, avance, chrono)   # dessin du premier plan, puis animation
             chrono["total"] = round(time.time() - debut, 2)
             _noter(chrono, prompt)
             journal.info("vidéo %s en %.0f s (chargement %s s, rendu %s s)", chemin.name, chrono["total"],

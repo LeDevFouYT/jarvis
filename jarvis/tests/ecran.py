@@ -22,7 +22,7 @@ TESTS = [("ordres", "il obéit · question entière, outil appelé"), ("telegram
          ("interruption", "04 · interruption"), ("eclair", "05 · réponse éclair"), ("personnalites", "06 · personnalités"),
          ("langues", "07 · langues"), ("fenetres", "09 · fenêtres"), ("rangement", "10 · rangement"), ("dictee", "11 · dictée"),
          ("sentinelle", "12 · sentinelle"), ("armures", "v3-1 · armures et mode vidéo"), ("visage", "v3-2 · le visage de particules"), ("majordome", "v3-3 · la voix du majordome"), ("hologramme", "v3-4 · les hologrammes"), ("gestes", "v3-5 · les gestes"), ("scan", "v3-6 · le scan de la pièce"), ("globe", "v3-7 · le globe"), ("video_ia", "v3-8 · la vidéo"), ("superposition", "v3-9 · hors du HUD"), ("repetition", "RÉPÉTITION GÉNÉRALE"),
-         ("live", "mode live · le tchat du direct"), ("intrusion", "intrusion · cette machine seulement"), ("passerelle_rattrapage", "passerelle · rattrapage"), ("mise_en_page", "mise en page · rien ne dépasse"), ("cadence", "cadence du HUD")]
+         ("live", "mode live · le tchat du direct"), ("intrusion", "intrusion · cette machine seulement"), ("cloud_complet", "cloud · un client a droit à tout"), ("passerelle_rattrapage", "passerelle · rattrapage"), ("mise_en_page", "mise en page · rien ne dépasse"), ("cadence", "cadence du HUD")]
 
 
 class Lancement:

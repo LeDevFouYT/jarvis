@@ -74,8 +74,14 @@ def alternance(v: Verifs):
          V._suivre, V._recuperer, V.sur_evenement, generer_image.comfyui_present) = anciens
         requests.post = ancien_post
     v.ok(immediat < 1.0 and "tourne" in phrase, "la réponse part tout de suite", f"{immediat * 1000:.0f} ms · {phrase}")
-    v.ok(ordre[:4] == ["cerveau déchargé", "ComfyUI libéré", "graphe envoyé", "avancement suivi"],
-         "le cerveau quitte la carte avant que Wan s'en serve", ordre[:4])
+    # Deux graphes partent maintenant : le premier plan dessiné, puis Wan qui l'anime (depuis le 20/09, Wan anime
+    # bien mieux une image qu'un texte seul). Ce qui compte n'est pas leur nombre mais l'ordre : le cerveau doit
+    # avoir quitté la carte avant le premier, et ComfyUI avoir été vidé.
+    envois = [i for i, x in enumerate(ordre) if x == "graphe envoyé"]
+    v.ok(ordre[:2] == ["cerveau déchargé", "ComfyUI libéré"] and envois and envois[0] >= 2,
+         "le cerveau quitte la carte avant que le moindre graphe parte", ordre[:4])
+    v.ok("avancement suivi" in ordre and ordre.index("avancement suivi") > envois[-1] if envois else False,
+         "l'avancement est suivi après l'envoi du graphe de Wan", ordre[:5])
     v.ok(ordre[-2:] == ["ComfyUI libéré", "cerveau rechargé"],
          "et il revient après, même quand le rendu échoue", ordre[-2:])
     v.ok(any(e["type"] == "video_ia_erreur" for e in evenements), "l'échec est annoncé, pas avalé",
