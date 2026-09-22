@@ -119,7 +119,6 @@
 
 </main>
 <script>
-  const PASSERELLE = "https://spiral-precise-capture.ngrok-free.dev";
   // La cagnotte : d'abord le dernier état publié sur GitHub (toujours disponible), puis le chiffre en direct si la machine répond.
   function montrerCagnotte(c, direct) {
     document.getElementById("cagnotte-total").firstChild.textContent = c.total.toLocaleString("fr", { style: "currency", currency: "EUR" });
@@ -135,7 +134,8 @@
     document.getElementById("cadran-objectif").textContent = c.prochain ? `prochain objectif : ${c.prochain.titre}` : "tous les objectifs sont atteints, merci";
   }
   fetch("cagnotte.json?" + Date.now()).then(r => r.json()).then(c => montrerCagnotte(c, false)).catch(() => {});
-  fetch(PASSERELLE + "/cagnotte", { headers: { "ngrok-skip-browser-warning": "1" } }).then(r => r.json()).then(c => montrerCagnotte(c, true)).catch(() => {});
+  // la cagnotte en direct est passée par la machine de l'auteur : tant que le service en ligne est suspendu,
+  // seul le dernier état publié (cagnotte.json) est affiché.
 </script>
 </body>
 </html>

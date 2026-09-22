@@ -317,6 +317,15 @@ button:hover { border-color: var(--cyan); color: var(--cyan); box-shadow: 0 0 14
 .jauge { height: 4px; background: var(--fonce); margin-top: 7px; position: relative; overflow: hidden; }
 .jauge i { position: absolute; inset: 0; transform-origin: left; transform: scaleX(0); transition: transform .6s; background: linear-gradient(90deg, var(--cyan2), var(--cyan)); box-shadow: 0 0 8px rgba(var(--c),.5); }
 #cerveau-mode.distant b { color: var(--ambre); }
+/* La pastille du cerveau distant : en mode cloud, le client doit voir d'un coup d'œil si la machine qui calcule
+   est réveillée. Sans elle, il voyait ses minutes et croyait que tout allait bien (ajoutée le 22/09). */
+.pastille { display: none; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: baseline;
+  background: var(--dim); box-shadow: 0 0 8px currentColor; }
+#cerveau-mode.distant .pastille { display: inline-block; }
+.pastille.en-ligne { background: var(--cyan); color: var(--cyan); animation: pastille-bat 2.6s ease-in-out infinite; }
+.pastille.endormi { background: var(--ambre); color: var(--ambre); }
+.pastille.muet { background: var(--rouge); color: var(--rouge); }
+@keyframes pastille-bat { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
 #compteur { text-align: right; }
 #compteur b { font-size: 2rem; line-height: 1; color: var(--cyan); font-variant-numeric: tabular-nums; text-shadow: 0 0 22px rgba(var(--c),.6); }
 #compteur.sorti b { color: var(--ambre); text-shadow: 0 0 22px rgba(var(--a),.6); }

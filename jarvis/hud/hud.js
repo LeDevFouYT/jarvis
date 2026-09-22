@@ -497,7 +497,17 @@ async function rafraichir() {
     $("charges").textContent = e.charges.length ? e.charges.join(", ") : "rien en mémoire";
     let cerveau = e.cerveau.distant ? "distant · " + e.cerveau.modele : "local · " + e.cerveau.modele;
     if (e.solde) cerveau += e.solde.erreur ? " · passerelle injoignable" : ` · ${e.solde.credit_minutes} min (${e.solde.credit_euros} €)`;
-    $("cerveau").textContent = cerveau;
+    // la pastille : verte quand la machine distante répond, ambre quand elle dort, rouge quand la passerelle
+    // elle-même est muette. Le client sait ainsi tout de suite s'il peut poser sa question.
+    const pastille = $("pastille-cerveau");
+    if (pastille) {
+      const etatServeur = !e.solde ? "" : e.solde.erreur ? "muet" : e.solde.cerveau_en_ligne === false ? "endormi" : "en-ligne";
+      pastille.className = "pastille" + (etatServeur ? " " + etatServeur : "");
+      pastille.title = { "en-ligne": "serveur en ligne", "endormi": "serveur endormi : réessayez plus tard, aucune minute n'est décomptée",
+                         "muet": "passerelle injoignable" }[etatServeur] || "";
+      if (etatServeur === "endormi") cerveau += " · serveur endormi";
+    }
+    $("cerveau-texte").textContent = cerveau;
     $("cerveau-mode").classList.toggle("distant", e.cerveau.distant);
     $("voix").textContent = e.voix.moteur === "elevenlabs" ? (e.voix.elevenlabs ? "ElevenLabs (internet)" : "ElevenLabs absent → Kokoro")
       : e.voix.moteur === "majordome" ? (e.voix.majordome ? "Majordome · Qwen3-TTS local" : "Majordome en chargement → Kokoro") : "Kokoro · 100 % local";

@@ -40,43 +40,17 @@
   </div>
 </main>
 <script>
-  const PASSERELLE = "https://spiral-precise-capture.ngrok-free.dev";
+  // Le service en ligne est suspendu : plus d'appel à une machine personnelle depuis cette page. On explique,
+  // et on laisse une porte de sortie (l'adresse de contact) à qui aurait payé avant la suspension.
   const params = new URLSearchParams(location.search);
-  const session = params.get("session_id"), produit = params.get("produit") || "cloud";
+  const produit = params.get("produit") || "cloud";
   const c = document.getElementById("contenu");
-  if (produit !== "cloud") document.querySelectorAll("main .carte")[1].style.display = "none";
-  let essais = 0;
-  async function chercher() {
-    essais++;
-    if (!session) { c.innerHTML = "<p>Paiement introuvable : ouvrez cette page depuis le lien de confirmation de Stripe.</p>"; return; }
-    try {
-      const r = await fetch(PASSERELLE + "/merci?format=json&session_id=" + encodeURIComponent(session), { headers: { "ngrok-skip-browser-warning": "1" } });
-      if (r.status === 200) {
-        const j = await r.json();
-        if (j.produit === "source") {
-          c.innerHTML = `<p>Merci pour votre achat. Voici le code source complet de Jarvis, en archive zip.</p>
-            <a class="bouton" href="${PASSERELLE}/source?session_id=${encodeURIComponent(session)}">Télécharger Jarvis-Source.zip</a>
-            <p class="note">Ce lien reste valable : gardez cette page dans vos favoris pour retélécharger. Licence AGPL v3 ; licence commerciale sur demande.
-            Le README explique l'installation en cinq lignes ; ngrok peut afficher un écran « Visit Site » avant le téléchargement, cliquez-le.</p>`;
-        } else if (j.produit === "don") {
-          const k = j.cagnotte || {};
-          c.innerHTML = `<p>Merci du fond du cœur pour votre don de <b>${j.montant.toLocaleString("fr", { style: "currency", currency: "EUR" })}</b>.</p>
-            <p>La cagnotte est maintenant à <b>${(k.total || 0).toLocaleString("fr", { style: "currency", currency: "EUR" })}</b>${k.prochain ? `, prochain objectif ${k.prochain.montant} € : « ${k.prochain.titre} »` : ""}.</p>`;
-        } else {
-          c.innerHTML = `<p>Merci. Votre compte <b>${j.email}</b> dispose de <b>${j.minutes} minutes</b> de cerveau distant.</p>
-            <p>Votre jeton d'accès, à coller dans l'installateur :</p><div class="jeton">${j.jeton}</div>
-            <p class="note">Gardez-le précieusement : il ne sera plus affiché ici. Si vous le perdez, écrivez-nous avec l'adresse e-mail du paiement.</p>`;
-        }
-        return;
-      }
-      if (r.status === 202) { c.innerHTML = "<p class='attente'>Paiement en cours de confirmation, nouvel essai dans quelques secondes…</p>"; }
-      else { c.innerHTML = "<p class='attente'>La machine qui distribue les jetons ne répond pas pour l'instant. Votre paiement est enregistré : gardez cette page ouverte ou revenez plus tard, votre jeton vous attend.</p>"; }
-    } catch (e) {
-      c.innerHTML = "<p class='attente'>La machine qui distribue les jetons est éteinte pour le moment. Votre paiement est enregistré : gardez cette page ouverte ou revenez plus tard avec ce même lien, votre jeton vous attend.</p>";
-    }
-    setTimeout(chercher, essais < 20 ? 8000 : 60000);
-  }
-  chercher();
+  c.innerHTML = produit === "don"
+    ? "<p>Merci du fond du cœur pour votre don. Il finance la prochaine version de Jarvis.</p>"
+    : `<p>Merci pour votre achat.</p>
+       <p class="attente">Le service en ligne est <b>suspendu pour le moment</b>, le temps de le rendre disponible
+       en permanence. Écrivez-nous avec l'adresse e-mail du paiement : vous serez remboursé, ou crédité dès la
+       réouverture, comme vous préférez.</p>`;
 </script>
 </body>
 </html>

@@ -1,5 +1,12 @@
 # Nouveautés de Jarvis
 
+## Sécurité importante
+
+Une page web ouverte dans votre navigateur pouvait, par un détournement de nom de domaine, parler à
+votre Jarvis comme si elle venait de votre machine — et donc lui faire ouvrir des programmes ou
+déplacer vos fichiers. C'est corrigé : Jarvis ne répond plus qu'aux demandes venues de votre
+ordinateur. **Mettez à jour** : il le fait tout seul au prochain lancement.
+
 ## 🔧 Le nettoyage continue : téléphone, micro et YouTube
 
 - **Telegram, enfin sans surprise.** Une réponse envoyée à ton téléphone n'est plus coupée si quelqu'un dit « Hey Jarvis » à la maison. Une image, une capture ou une description demandée depuis le téléphone arrive sur le téléphone, pas dans les haut-parleurs du salon.

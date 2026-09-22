@@ -1,6 +1,6 @@
 {
   "python_version": "3.12.10",
-  "url_passerelle": "https://spiral-precise-capture.ngrok-free.dev/ollama",
+  "url_passerelle": "",
   "url_annuaire": "",
   "url_boutique": "https://buy.stripe.com/5kQ14mgu0dSKenp9pO08g00"
 }

@@ -372,6 +372,37 @@ async def cycle_de_vie(app):
 
 
 app = FastAPI(title="Jarvis", lifespan=cycle_de_vie)
+
+# --- Jarvis n'appartient qu'à cette machine ------------------------------------------------------
+# Le serveur n'écoute que sur 127.0.0.1, mais cela ne suffit pas : un site web peut faire pointer son propre
+# domaine vers 127.0.0.1 (« DNS rebinding »), et son JavaScript parle alors à Jarvis comme s'il était chez lui —
+# sans CORS, sans préflight, sans rien. Et Jarvis obéit : ouvrir un programme, déplacer des fichiers, regarder
+# l'écran, prendre une photo. Vérifié le 22/09 : une requête portant « Host: site-mechant.example » a réellement
+# fait ranger le dossier Téléchargements.
+# La parade tient en une ligne : on n'accepte que les requêtes qui s'adressent à cette machine par son vrai nom,
+# et aucune page d'un autre domaine.
+HOTES_MAISON = {"127.0.0.1", "localhost", "::1", "0.0.0.0", ""}
+
+
+def _hote(valeur: str) -> str:
+    """Le nom d'hôte d'un « Host » ou d'une « Origin », sans le port ni les crochets d'IPv6."""
+    valeur = (valeur or "").strip().lower()
+    if "//" in valeur:
+        valeur = valeur.split("//", 1)[1]
+    valeur = valeur.split("/", 1)[0]
+    if valeur.startswith("["):                      # [::1]:8765
+        return valeur[1:valeur.find("]")] if "]" in valeur else valeur[1:]
+    return valeur.rsplit(":", 1)[0] if valeur.count(":") == 1 else valeur
+
+
+@app.middleware("http")
+async def seulement_cette_machine(requete, suite):
+    if _hote(requete.headers.get("host", "")) not in HOTES_MAISON:
+        return JSONResponse({"erreur": "Jarvis ne répond qu'à cette machine"}, status_code=403)
+    origine = requete.headers.get("origin")
+    if origine and _hote(origine) not in HOTES_MAISON:
+        return JSONResponse({"erreur": "page étrangère refusée"}, status_code=403)
+    return await suite(requete)
 WORKSPACE.mkdir(exist_ok=True)
 app.mount("/workspace", StaticFiles(directory=str(WORKSPACE)), name="workspace")
 _MEDIAPIPE = RACINE / "modeles" / "mediapipe"          # le modèle des mains, servi au HUD (rien d'autre du dossier)
@@ -452,6 +483,10 @@ def evenements_sse():
 
 @app.websocket("/events")
 async def evenements_ws(websocket: WebSocket):
+    # même règle que pour le reste : une page d'un autre domaine n'écoute pas ce qui se passe ici
+    if _hote(websocket.headers.get("host", "")) not in HOTES_MAISON             or (websocket.headers.get("origin") and _hote(websocket.headers.get("origin")) not in HOTES_MAISON):
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
     q = EMETTEUR.abonner()
     boucle = asyncio.get_running_loop()
