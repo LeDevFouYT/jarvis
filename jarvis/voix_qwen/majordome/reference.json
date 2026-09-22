@@ -1,0 +1,77 @@
+{
+ "description": "A distinguished English butler in his fifties, speaking French fluently with a light, refined British accent. Deep, warm baritone voice, calm and measured pace, impeccable diction, courteous and composed, with a hint of dry wit. Clean studio recording, close microphone, no background noise, no music.",
+ "texte": "Bonsoir, monsieur. Votre thé est servi, les rideaux sont tirés, et j'ai pris la liberté de préparer vos dossiers pour demain matin.",
+ "modele": "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+ "licence": "Apache-2.0",
+ "imitation": "aucune : voix inventée à partir de la description seule",
+ "choisi": 3,
+ "cree_le": "2026-09-19 20:14",
+ "essais": [
+  {
+   "essai": 1,
+   "graine": 1000,
+   "fichier": "candidats\\essai_1.wav",
+   "entendu": "Bonsoir, monsieur. Votre thé est servi, les rideaux sont tirés et j'ai pris la liberté de préparer vos dossiers pour demain matin.",
+   "ecarts": [],
+   "score": 0,
+   "hauteur_hz": 93,
+   "duree_s": 8.83,
+   "calcul_s": 26.2
+  },
+  {
+   "essai": 2,
+   "graine": 1001,
+   "fichier": "candidats\\essai_2.wav",
+   "entendu": "Bonsoir, monsieur. Votre thé est servi, les rideaux sont tirés, et j'ai pris la liberté de préparer vos dossiers pour demain matin.",
+   "ecarts": [],
+   "score": 0,
+   "hauteur_hz": 88,
+   "duree_s": 8.0,
+   "calcul_s": 21.3
+  },
+  {
+   "essai": 3,
+   "graine": 1002,
+   "fichier": "candidats\\essai_3.wav",
+   "entendu": "Bonsoir, monsieur. Votre thé est servi, les rideaux sont tirés, et j'ai pris la liberté de préparer vos dossiers pour demain matin.",
+   "ecarts": [],
+   "score": 0,
+   "hauteur_hz": 107,
+   "duree_s": 8.83,
+   "calcul_s": 23.2
+  },
+  {
+   "essai": 4,
+   "graine": 1003,
+   "fichier": "candidats\\essai_4.wav",
+   "entendu": "Bonsoir, monsieur. Votre thé est servi, les rideaux sont tirés et j'ai pris la liberté de préparer vos dossiers pour demain matin.",
+   "ecarts": [],
+   "score": 0,
+   "hauteur_hz": 101,
+   "duree_s": 7.47,
+   "calcul_s": 19.2
+  },
+  {
+   "essai": 5,
+   "graine": 1004,
+   "fichier": "candidats\\essai_5.wav",
+   "entendu": "Bonsoir, monsieur. Votre thé est servi, les rideaux sont tirés et j'ai pris la liberté de préparer vos dossiers pour demain matin.",
+   "ecarts": [],
+   "score": 0,
+   "hauteur_hz": 149,
+   "duree_s": 8.01,
+   "calcul_s": 21.0
+  },
+  {
+   "essai": 6,
+   "graine": 1005,
+   "fichier": "candidats\\essai_6.wav",
+   "entendu": "Bonsoir, monsieur. Votre thé est servi, les rideaux sont tirés, et j'ai pris la liberté de préparer vos dossiers pour demain matin.",
+   "ecarts": [],
+   "score": 0,
+   "hauteur_hz": 156,
+   "duree_s": 7.52,
+   "calcul_s": 19.8
+  }
+ ]
+}

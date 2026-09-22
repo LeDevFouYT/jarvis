@@ -85,11 +85,13 @@ def _recuperer(sorties: dict) -> Path:
 
 
 def _liberer_et_recharger(chrono: dict, debut: float):
+    from .. import carte
     from ..cerveau import CERVEAU
     try:
         requests.post(f"{URL}/free", json={"unload_models": True, "free_memory": True}, timeout=10)
     except requests.RequestException:
         pass
+    carte.liberer("image")
     t = time.time()
     CERVEAU.charger()
     chrono["rechargement_cerveau"] = round(time.time() - t, 2)
@@ -121,6 +123,18 @@ def _lancer_comfyui() -> bool:
         if comfyui_present():
             return True
     return False
+
+
+def dessiner(prompt: str, format_: str = "carre", delai: float = 600) -> Path:
+    """Une image, tout de suite, sans toucher au cerveau ni au verrou : pour un autre outil qui gère déjà la carte
+    (l'hologramme). Rend le chemin du PNG enregistré dans workspace/images."""
+    r = requests.post(f"{URL}/prompt", json={"prompt": _preparer(prompt, format_), "client_id": uuid.uuid4().hex}, timeout=30)
+    if r.status_code != 200:
+        raise RuntimeError(f"ComfyUI a refusé le workflow ({r.status_code})")
+    sorties = _attendre(r.json()["prompt_id"], delai)
+    if sorties is None:
+        raise RuntimeError("ComfyUI n'a pas terminé à temps")
+    return _recuperer(sorties)
 
 
 def generer_pour_cloud(prompt: str, format_: str = "carre") -> tuple[bytes, float]:
@@ -212,6 +226,8 @@ def executer(prompt: str, format: str = "carre") -> str:
     try:
         sur_evenement({"type": "image_debut", "t": time.time(), "prompt": prompt})
         t0 = time.time()
+        from .. import carte
+        carte.occuper("image")                        # un seul gros modèle à la fois sur la carte
         CERVEAU.decharger()
         liberer_avant()
         chrono["dechargement_cerveau"] = round(time.time() - t0, 2)

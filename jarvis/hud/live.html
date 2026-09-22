@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Jarvis · HUD du direct</title>
+<!--
+  Le HUD du direct (21/09) : la page que le SPECTATEUR voit, pas celle sur laquelle on travaille.
+
+  Dans OBS : « Source navigateur » → http://127.0.0.1:8765/live → 1920 × 1080.
+    ?fond=transparent   pour la poser par-dessus un jeu ou une capture d'écran
+    ?cote=gauche        inverse la mise en page (tchat à gauche)
+    ?reacteur=0         sans rien en fond (si vous êtes déjà à l'image)
+    ?visage=0           le réacteur seul, sans le visage de particules
+    ?titre=…            le titre affiché en haut à gauche (par défaut celui du direct)
+
+  Règles de dessin reprises du HUD : aucune propriété qui force à repeindre la scène 3D à chaque image (pas de
+  backdrop-filter, pas de filtre animé) ; tout ce qui bouge bouge en transform ou en opacité.
+-->
+<style>
+  :root {
+    --c: 95, 227, 255;                 /* les canaux de la couleur d'armure : une armure les redéfinit */
+    --cyan: #5fe3ff; --clair: #e6fbff; --dim: #7fb3c6; --ambre: #ffb454;
+    --nuit: 2, 12, 22; --nuit2: 8, 38, 58;
+    --marge: 46px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; color: var(--clair);
+    background: #000; font-family: "Segoe UI", "Segoe UI Variable", system-ui, sans-serif; }
+  body.transparent, body.transparent #trame { background: transparent; }
+  body.transparent #vignette { display: none; }
+  #scene { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; z-index: 0; }
+  body.sans-reacteur #scene { display: none; }
+  /* la trame et la vignette : ce qui donne la matière « écran d'engin » plutôt que « page web » */
+  #trame { position: fixed; inset: 0; z-index: 1; pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(var(--c), .035) 0 1px, transparent 1px 4px); }
+  #vignette { position: fixed; inset: 0; z-index: 1; pointer-events: none;
+    background: radial-gradient(ellipse at 50% 45%, transparent 48%, rgba(0, 0, 0, .72) 100%); }
+
+  /* ---------------------------------------------------------------- vocabulaire commun */
+  .bloc { position: fixed; z-index: 3;
+    background: linear-gradient(180deg, rgba(var(--nuit2), .62), rgba(var(--nuit), .82));
+    border: 1px solid rgba(var(--c), .34); box-shadow: 0 0 60px rgba(0, 0, 0, .55), inset 0 0 40px rgba(var(--c), .045); }
+  .coin { position: absolute; width: 15px; height: 15px; border: 2px solid var(--cyan); z-index: 2;
+    filter: drop-shadow(0 0 6px rgba(var(--c), .75)); }
+  .coin.hg { top: -2px; left: -2px; border-right: 0; border-bottom: 0; }
+  .coin.hd { top: -2px; right: -2px; border-left: 0; border-bottom: 0; }
+  .coin.bg { bottom: -2px; left: -2px; border-right: 0; border-top: 0; }
+  .coin.bd { bottom: -2px; right: -2px; border-left: 0; border-top: 0; }
+  .entete { display: flex; align-items: center; gap: 10px; padding: 13px 18px 11px;
+    border-bottom: 1px solid rgba(var(--c), .18); font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 12px; letter-spacing: .34em; text-transform: uppercase; color: var(--cyan); }
+  .entete .point { width: 7px; height: 7px; border-radius: 50%; background: var(--cyan);
+    box-shadow: 0 0 10px 2px rgba(var(--c), .9); animation: pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.7); } }
+
+  /* ---------------------------------------------------------------- bandeau du haut : la chaîne */
+  #enseigne { position: fixed; top: var(--marge); left: var(--marge); right: var(--marge); z-index: 3; display: flex;
+    align-items: baseline; gap: 18px; pointer-events: none; }
+  #enseigne .nom { font-family: Consolas, monospace; font-size: 15px; letter-spacing: .58em; color: var(--cyan);
+    text-shadow: 0 0 22px rgba(var(--c), .7); }
+  #enseigne .sujet { font-size: 15px; color: var(--dim); letter-spacing: .04em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  #enseigne .badge { font-family: Consolas, monospace; font-size: 11px; letter-spacing: .28em; color: var(--cyan);
+    border: 1px solid rgba(var(--c), .45); padding: 5px 11px; white-space: nowrap; }
+  #enseigne::after { content: ""; position: absolute; left: 0; right: 0; bottom: -12px; height: 1px;
+    background: linear-gradient(90deg, rgba(var(--c), .55), rgba(var(--c), 0)); }
+  body.gauche #enseigne { flex-direction: row-reverse; }
+
+  /* ---------------------------------------------------------------- le tchat */
+  #tchat { top: calc(var(--marge) + 56px); right: var(--marge); width: 470px; max-height: 58vh;
+    display: flex; flex-direction: column; }
+  body.gauche #tchat { right: auto; left: var(--marge); }
+  #fil { position: relative; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px;
+    padding: 16px 18px 18px; overflow: hidden; }
+  /* les messages montent et s'effacent en haut : on lit toujours le plus récent, sans ascenseur à l'image */
+  #fil::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 58px; z-index: 2;
+    background: linear-gradient(180deg, rgba(var(--nuit), .92), rgba(var(--nuit), 0)); pointer-events: none; }
+  .ligne { display: flex; gap: 10px; align-items: baseline; font-size: 16px; line-height: 1.38;
+    animation: monte .5s cubic-bezier(.2, .8, .3, 1) both; }
+  @keyframes monte { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+  .qui { flex: 0 0 auto; max-width: 36%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-family: Consolas, monospace; font-size: 12px; letter-spacing: .08em; color: var(--dim); }
+  .texte { flex: 1; }
+  /* ce que dit Jarvis : un bloc teinté, pas une simple bordure — ça se voit à trois mètres */
+  .ligne.jarvis { background: linear-gradient(90deg, rgba(var(--c), .14), rgba(var(--c), .02));
+    border-left: 3px solid var(--cyan); padding: 8px 12px 9px; margin: 2px 0; }
+  .ligne.jarvis .qui { color: var(--cyan); text-shadow: 0 0 12px rgba(var(--c), .6); }
+  .ligne.accueil { background: linear-gradient(90deg, rgba(var(--c), .1), transparent); padding: 6px 12px; }
+  .ligne.accueil .qui, .ligne.accueil .texte { color: #9fefff; }
+  .ligne.refus .texte { color: var(--ambre); }
+  .ligne.atelier .qui { color: var(--ambre); }
+
+  /* ---------------------------------------------------------------- le dessin d'un spectateur */
+  #dessin { top: calc(var(--marge) + 56px); left: var(--marge); width: 640px; opacity: 0; transform: translateY(14px);
+    transition: opacity .5s, transform .5s; pointer-events: none; }
+  body.gauche #dessin { left: auto; right: var(--marge); }
+  #dessin.visible { opacity: 1; transform: none; }
+  #dessin .image { position: relative; overflow: hidden; }
+  #dessin img { display: block; width: 100%; height: auto; }
+  #dessin .balayage { position: absolute; left: 0; right: 0; height: 3px; top: 0;
+    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    box-shadow: 0 0 26px 6px rgba(var(--c), .55); animation: balaye 1.5s ease-in-out 2; }
+  @keyframes balaye { from { transform: translateY(0); } to { transform: translateY(calc(100% * 130)); } }
+  #dessin .credit { display: flex; align-items: baseline; gap: 10px; padding: 12px 16px 14px;
+    border-top: 1px solid rgba(var(--c), .18); }
+  #dessin .credit .par { font-family: Consolas, monospace; font-size: 11px; letter-spacing: .26em;
+    text-transform: uppercase; color: var(--dim); }
+  #dessin .credit b { color: var(--cyan); font-size: 17px; text-shadow: 0 0 16px rgba(var(--c), .6); }
+  #dessin .credit span { color: var(--clair); font-size: 15px; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; }
+
+  /* ---------------------------------------------------------------- ce que Jarvis dit, en grand */
+  #parole { position: fixed; left: 50%; bottom: 168px; transform: translateX(-50%); z-index: 3;
+    width: min(56vw, 880px); text-align: center; font-size: 27px; line-height: 1.42; letter-spacing: .01em;
+    text-shadow: 0 2px 26px #000, 0 0 60px rgba(0, 0, 0, .9); opacity: 0; transition: opacity .45s; }
+  #parole.visible { opacity: 1; }
+  #parole::before { content: ""; position: absolute; left: 50%; top: -22px; width: 54px; height: 1px;
+    transform: translateX(-50%); background: rgba(var(--c), .6); }
+
+  /* ---------------------------------------------------------------- le socle : les compteurs */
+  #socle { left: 50%; bottom: var(--marge); transform: translateX(-50%); z-index: 3; display: flex;
+    align-items: stretch; padding: 0; }
+  #socle .case { padding: 13px 26px 14px; border-right: 1px solid rgba(var(--c), .14); text-align: center;
+    min-width: 128px; }
+  #socle .case:last-child { border-right: 0; }
+  #socle .etiquette { font-family: Consolas, monospace; font-size: 10px; letter-spacing: .3em;
+    text-transform: uppercase; color: var(--dim); }
+  #socle .valeur { font-size: 26px; font-variant-numeric: tabular-nums; margin-top: 4px; line-height: 1; }
+  #socle .local { background: linear-gradient(180deg, rgba(var(--c), .16), rgba(var(--c), .04)); }
+  #socle .local .etiquette { color: var(--cyan); }
+  #socle .local .valeur { color: var(--cyan); text-shadow: 0 0 24px rgba(var(--c), .8); }
+  /* la page ouverte au mauvais endroit (double-clic sur le fichier) ou Jarvis éteint : on le DIT */
+  #liaison { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 6; display: none;
+    max-width: 640px; padding: 26px 34px 28px; text-align: center; line-height: 1.5;
+    background: linear-gradient(180deg, rgba(var(--nuit2), .8), rgba(var(--nuit), .92));
+    border: 1px solid rgba(var(--c), .4); box-shadow: 0 0 70px rgba(0, 0, 0, .7); }
+  #liaison.visible { display: block; }
+  #liaison h1 { margin: 0 0 10px; font-family: Consolas, monospace; font-size: 13px; letter-spacing: .34em;
+    text-transform: uppercase; color: var(--ambre); }
+  #liaison code { display: inline-block; margin-top: 12px; padding: 8px 14px; color: var(--cyan);
+    border: 1px solid rgba(var(--c), .45); font-size: 17px; letter-spacing: .04em; }
+  #etat { position: fixed; left: 50%; bottom: calc(var(--marge) + 96px); transform: translateX(-50%); z-index: 3;
+    font-family: Consolas, monospace; font-size: 11px; letter-spacing: .48em; text-transform: uppercase;
+    color: rgba(var(--c), .55); }
+</style>
+<script type="importmap">{ "imports": { "three": "/hud/vendor/three.module.min.js" } }</script>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div id="trame"></div>
+<div id="vignette"></div>
+
+<header id="enseigne">
+  <span class="nom">J.A.R.V.I.S.</span>
+  <span class="sujet" id="titre-direct">en direct</span>
+  <span class="badge">100 % local · aucun nuage</span>
+</header>
+
+<section id="tchat" class="bloc">
+  <i class="coin hg"></i><i class="coin hd"></i><i class="coin bg"></i><i class="coin bd"></i>
+  <div class="entete"><span class="point"></span>tchat du direct</div>
+  <div id="fil"></div>
+</section>
+
+<section id="dessin" class="bloc">
+  <i class="coin hg"></i><i class="coin hd"></i><i class="coin bg"></i><i class="coin bd"></i>
+  <div class="entete"><span class="point"></span>dessiné à la demande du tchat</div>
+  <div class="image"><img alt=""><div class="balayage"></div></div>
+  <div class="credit"><span class="par">demandé par</span><b></b><span></span></div>
+</section>
+
+<div id="liaison">
+  <h1>liaison</h1>
+  <div id="liaison-texte"></div>
+  <code>http://127.0.0.1:8765/live</code>
+</div>
+
+<div id="parole"></div>
+<div id="etat">en veille</div>
+
+<footer id="socle" class="bloc">
+  <i class="coin hg"></i><i class="coin hd"></i><i class="coin bg"></i><i class="coin bd"></i>
+  <div class="case"><div class="etiquette">messages</div><div class="valeur" id="n-messages">0</div></div>
+  <div class="case"><div class="etiquette">réponses</div><div class="valeur" id="n-reponses">0</div></div>
+  <div class="case"><div class="etiquette">bienvenues</div><div class="valeur" id="n-accueils">0</div></div>
+  <div class="case"><div class="etiquette">dessins</div><div class="valeur" id="n-dessins">0</div></div>
+  <div class="case local"><div class="etiquette">sorties internet</div>
+    <div class="valeur" id="n-sorties">0</div></div>
+</footer>
+
+<script>
+  // Script classique, volontairement : si la page est ouverte en double-cliquant sur le fichier, le module
+  // ci-dessous n'est même pas exécuté (ses imports pointent vers /hud/… et n'existent pas sur le disque).
+  // Sans ce petit bout de code, on n'aurait qu'un écran noir sans explication.
+  if (location.protocol === "file:") {
+    var l = document.getElementById("liaison");
+    document.getElementById("liaison-texte").textContent =
+      "Cette page doit être ouverte depuis Jarvis, pas depuis le fichier. Dans OBS : source navigateur, "
+      + "1920 × 1080, Jarvis lancé, avec cette adresse :";
+    l.classList.add("visible");
+  }
+</script>
+<script type="module">
+import { creerReacteur } from "/hud/reacteur.js";
+import { appliquerCss } from "/hud/themes.js";
+
+const params = new URLSearchParams(location.search);
+if (params.get("fond") === "transparent") document.body.classList.add("transparent");
+if (params.get("cote") === "gauche") document.body.classList.add("gauche");
+if (params.get("reacteur") === "0") document.body.classList.add("sans-reacteur");
+appliquerCss(params.get("theme") || "jarvis");
+
+const reacteur = document.body.classList.contains("sans-reacteur")
+  ? null : creerReacteur(document.getElementById("scene"));
+// Sur un direct, on vient voir Jarvis, pas un réacteur : le visage de particules est allumé d'office, et ses
+// lèvres suivent le niveau de sa voix (les mêmes événements que le HUD de travail). ?visage=0 pour l'éteindre.
+const VISAGE = params.get("visage") !== "0";
+if (reacteur && VISAGE) setTimeout(() => reacteur.visage(true), 600);
+
+const $ = id => document.getElementById(id);
+const fil = $("fil"), parole = $("parole"), etat = $("etat"), dessin = $("dessin");
+const MAX_LIGNES = 8;                      // à l'image, au-delà ça ne se lit plus
+let dessins = 0;
+if (params.get("titre")) $("titre-direct").textContent = params.get("titre");
+
+function ligne(genre, qui, texte) {
+  const l = document.createElement("div");
+  l.className = "ligne " + (genre || "");
+  if (qui) { const q = document.createElement("span"); q.className = "qui"; q.textContent = qui; l.appendChild(q); }
+  const t = document.createElement("span"); t.className = "texte"; t.textContent = texte || "";
+  l.appendChild(t);
+  fil.appendChild(l);
+  while (fil.children.length > MAX_LIGNES) fil.removeChild(fil.firstChild);
+}
+
+function compte(c) {
+  if (!c) return;
+  $("n-messages").textContent = c.messages ?? 0;
+  $("n-reponses").textContent = c.reponses ?? 0;
+  $("n-accueils").textContent = c.accueils ?? 0;
+}
+
+function montrerDessin(e) {
+  dessins += 1;
+  $("n-dessins").textContent = dessins;
+  dessin.querySelector("img").src = e.url;
+  dessin.querySelector("b").textContent = e.auteur || "un spectateur";
+  dessin.querySelector(".credit span:last-child").textContent = e.sujet || "";
+  dessin.classList.add("visible");
+  const b = dessin.querySelector(".balayage");        // relancer le balayage à chaque nouvelle image
+  b.style.animation = "none"; void b.offsetWidth; b.style.animation = "";
+}
+
+function surLive(e) {
+  switch (e.quoi) {
+    case "demarre": if (reacteur && VISAGE) reacteur.visage(true);
+      if (e.titre) $("titre-direct").textContent = e.titre.slice(0, 70);
+      ligne("jarvis", "JARVIS", "j'anime le direct"); break;
+    case "message": ligne("", e.auteur, e.texte); break;
+    case "repondre": ligne("jarvis", "JARVIS → " + (e.auteur || ""), e.texte); break;
+    case "accueillir": ligne("accueil", "BIENVENUE", e.texte); break;
+    case "relancer": ligne("jarvis", "JARVIS", e.texte); break;
+    case "en_file": ligne("atelier", "ATELIER", `dessin de ${e.auteur} · ${e.sujet}`); break;
+    case "refus": ligne("refus", "ATELIER", `${e.auteur} · ${e.texte}`); break;
+    case "dessin_commence": ligne("atelier", "ATELIER", `je dessine « ${e.sujet} »…`); break;
+    case "image": montrerDessin(e); break;
+    case "image_ratee": ligne("refus", "ATELIER", `le dessin de ${e.auteur} n'a pas abouti`); break;
+    case "arrete": ligne("jarvis", "JARVIS", "fin du direct");
+      if (reacteur && VISAGE) reacteur.visage(false); break;
+  }
+  compte(e.compte || (e.quoi === "arrete" ? e : null));
+}
+
+function dire(mot) { etat.textContent = mot; }
+function montrerParole(texte) {
+  parole.textContent = texte || "";
+  parole.classList.toggle("visible", !!texte);
+  if (texte) clearTimeout(montrerParole.minuteur),
+             montrerParole.minuteur = setTimeout(() => parole.classList.remove("visible"), 9000);
+}
+
+function liaison(texte) {
+  const l = $("liaison");
+  $("liaison-texte").textContent = texte || "";
+  l.classList.toggle("visible", !!texte);
+}
+
+function brancher() {
+  const source = new EventSource("/events");
+  source.onopen = () => liaison("");
+  source.onerror = () => {
+    liaison("Jarvis ne répond pas. Lancez-le (lancer.bat), la page se rebranche toute seule.");
+    setTimeout(() => source.close(), 100); setTimeout(brancher, 5000);
+  };
+  source.onmessage = m => {
+    const e = JSON.parse(m.data);
+    switch (e.type) {
+      case "live": surLive(e); break;
+      case "niveau": reacteur && reacteur.niveau(e.valeur); break;
+      case "micro_niveau": reacteur && reacteur.micro(e.valeur); break;
+      case "parole_debut": reacteur && reacteur.etat("parole"); dire("jarvis parle"); break;
+      case "parole_fin": reacteur && (reacteur.etat("repos"), reacteur.niveau(0)); dire("en veille"); break;
+      case "reponse": montrerParole(e.texte); break;
+      case "mot_detecte": case "ecoute": reacteur && reacteur.etat("ecoute"); dire("il écoute"); break;
+      case "reflexion": reacteur && reacteur.etat("reflexion"); dire("réflexion"); break;
+      case "theme": appliquerCss(e.theme); reacteur && reacteur.theme(e.theme); break;
+      case "image": if (e.auteur) montrerDessin(e); break;
+      case "erreur": reacteur && reacteur.etat("erreur"); break;
+    }
+  };
+}
+if (location.protocol !== "file:") brancher();
+
+// le compteur de sorties Internet : la preuve, à l'image, que tout le reste tourne ici
+async function majSorties() {
+  try {
+    const j = await (await fetch("/etat")).json();
+    const s = j.sorties_internet;
+    $("n-sorties").textContent = typeof s === "object" && s ? (s.total ?? 0) : (s ?? 0);
+  } catch (e) { /* le serveur redémarre : on réessaie au prochain tour */ }
+  setTimeout(majSorties, 5000);
+}
+majSorties();
+
+window.__live = { ligne, surLive, montrerDessin, compte, liaison, get dessins() { return dessins; },
+                  get visage() { return reacteur ? reacteur.formeVisage : 0; } };
+</script>
+</body>
+</html>

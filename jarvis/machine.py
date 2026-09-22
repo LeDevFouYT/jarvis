@@ -46,6 +46,17 @@ def _nvidia() -> dict | None:
     return max(cartes, key=lambda c: c["vram_mo"])
 
 
+def vram_libre_mo() -> int | None:
+    """Mémoire vidéo libre à l'instant (nvidia-smi), None sans carte NVIDIA."""
+    exe = shutil.which("nvidia-smi") or os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "nvidia-smi.exe")
+    try:
+        sortie = subprocess.run([exe, "--query-gpu=memory.free", "--format=csv,noheader,nounits"], capture_output=True,
+                                text=True, timeout=10, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout.split()
+        return max(int(float(x)) for x in sortie) if sortie else None
+    except Exception:
+        return None
+
+
 def _ram_go() -> float:
     try:
         class M(ctypes.Structure):

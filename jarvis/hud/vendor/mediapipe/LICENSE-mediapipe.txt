@@ -1,0 +1,6 @@
+MediaPipe Tasks Vision 0.10.21 — Apache License 2.0
+Copyright 2023 The MediaPipe Authors
+https://github.com/google-ai-edge/mediapipe · https://www.apache.org/licenses/LICENSE-2.0
+
+Fichiers : vision_bundle.mjs, vision_wasm_internal.js/.wasm (variante SIMD seulement).
+Modèle hand_landmarker.task (Apache 2.0) : modeles/mediapipe/, hors dépôt.

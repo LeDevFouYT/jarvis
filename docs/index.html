@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Jarvis, l'assistant vocal local</title>
-<meta name="description" content="Jarvis : un assistant vocal façon Iron Man qui tourne sur votre PC. Sans carte graphique, Jarvis Cloud à 5 € pour 250 minutes.">
+<meta name="description" content="Jarvis : un assistant vocal façon Iron Man qui tourne sur votre PC. Gratuit et local : rien ne sort de votre machine.">
 <style>
   :root { --cyan: #5fe3ff; --cyan2: #1a7d99; --cyan3: #0d3a4a; --texte: #cfeefa; --dim: #6fa0b3; --ambre: #ffb454; }
   * { box-sizing: border-box; }
@@ -82,28 +82,25 @@
       le partagez. Pour l'intégrer à un produit sans publier votre code, une licence commerciale existe.</p>
       <a class="bouton secondaire" href="https://github.com/LeDevFouYT/jarvis">Voir le code sur GitHub</a>
       <p class="note"><code>git clone</code>, puis <code>installer.bat</code> et <code>lancer.bat</code>.
-      Le serveur de paiement du mode cloud n'est pas inclus.</p>
+      Le serveur du mode en ligne n'est pas inclus.</p>
     </div>
   </div>
   <p class="note"><b>Dans les deux cas, il vous faut une carte graphique NVIDIA</b> : 8 Go de mémoire vidéo minimum,
   12 Go pour la version complète. L'installateur vérifie tout seul et vous le dit. Rien ne sort de votre PC.</p>
 
-  <h2>Pas de carte graphique ? Jarvis Cloud</h2>
+  <h2>Pas de carte graphique ?</h2>
   <div class="carte">
-    <p>Le cerveau de Jarvis tourne alors sur notre machine, le reste chez vous. <b>5 € pour 250 minutes de calcul</b>,
-    c'est des milliers de réponses. Vous payez, vous recevez un jeton, vous le collez dans l'installateur (ou plus tard dans les Réglages de Jarvis), c'est parti.</p>
-    <div class="prix">5 €<small>= 250 minutes</small></div>
-    <p class="etat">Cerveau distant : <b id="etat">vérification…</b></p>
-    <a class="bouton" href="https://buy.stripe.com/5kQ14mgu0dSKenp9pO08g00">Acheter 5 € de crédit</a>
-    <a class="bouton secondaire" href="https://github.com/LeDevFouYT/jarvis/releases/latest/download/Jarvis-Installateur.exe">Télécharger Jarvis</a>
-    <p class="note">Plafond de 120 minutes par jour. Quand notre machine est éteinte, votre Jarvis vous le dit et fait le reste en local.</p>
+    <p>Jarvis démarre quand même : le cerveau tourne alors sur le processeur, lentement, sans vision ni images.
+    Un service en ligne payant a existé pour ce cas ; il est <b>suspendu pour le moment</b>, le temps de le rendre
+    disponible en permanence. Rien n'est en vente aujourd'hui.</p>
+    <a class="bouton" href="https://github.com/LeDevFouYT/jarvis/releases/latest/download/Jarvis-Installateur.exe">Télécharger Jarvis</a>
   </div>
 
   <h2>Comment ça marche</h2>
   <div class="carte">
     <ol>
       <li>Téléchargez et lancez <b>Jarvis-Installateur.exe</b>. Il examine votre machine.</li>
-      <li>Avec une carte : cliquez « Installer ». Sans carte : achetez le crédit, collez le jeton reçu, puis « Installer ».</li>
+      <li>Cliquez « Installer » : il télécharge ce qu'il faut et met un raccourci sur le Bureau.</li>
       <li>Double-cliquez <b>Jarvis</b> sur le Bureau et dites « Hey Jarvis ».</li>
     </ol>
     <p class="note">« Hey Jarvis, dans quel état est la machine ? » · « Ouvre YouTube et cherche des vidéos de chats » ·
@@ -123,10 +120,6 @@
 </main>
 <script>
   const PASSERELLE = "https://spiral-precise-capture.ngrok-free.dev";
-  fetch(PASSERELLE + "/maison/etat", { headers: { "ngrok-skip-browser-warning": "1" } })
-    .then(r => r.json())
-    .then(j => { const e = document.getElementById("etat"); e.textContent = j.en_ligne ? "en ligne" : "hors ligne pour le moment"; e.className = j.en_ligne ? "" : "off"; })
-    .catch(() => { const e = document.getElementById("etat"); e.textContent = "hors ligne pour le moment"; e.className = "off"; });
   // La cagnotte : d'abord le dernier état publié sur GitHub (toujours disponible), puis le chiffre en direct si la machine répond.
   function montrerCagnotte(c, direct) {
     document.getElementById("cagnotte-total").firstChild.textContent = c.total.toLocaleString("fr", { style: "currency", currency: "EUR" });

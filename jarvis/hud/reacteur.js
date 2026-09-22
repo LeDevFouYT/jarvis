@@ -3,19 +3,37 @@
 // partagée avec le reste du HUD (surImage). Aucun post-traitement : tout l'éclat vient du mélange additif,
 // ce qui tient 60 images/s en 2560×1440 même quand Ollama occupe la mémoire vidéo.
 import * as THREE from "three";
+import { THEMES, THEME_DEFAUT } from "./themes.js";
+import { creerVisage } from "./visage.js";
+import { creerHologramme } from "./hologramme.js";
+import { creerGlobe } from "./globe.js";
 
 // taille du réacteur dans la scène : son anneau extérieur fait environ le quart de la hauteur de l'écran
 const TAILLE = 0.78, TAILLE_TABLE = 0.6;
 
-const CYAN = new THREE.Color(0x5fe3ff), AMBRE = new THREE.Color(0xffb454), ROUGE = new THREE.Color(0xff4b4b), BLANC = new THREE.Color(0xd8f8ff);
+const CYAN = new THREE.Color(0x5fe3ff), AMBRE = new THREE.Color(0xffb454);
 
+// l'armure en cours : couleurs cibles du réacteur, lues à chaque image (aucune allocation)
+const T = { nom: THEME_DEFAUT, principal: new THREE.Color(), accent: new THREE.Color(), erreur: new THREE.Color(),
+  fond: new THREE.Vector3(), grille: new THREE.Vector3(), accentRepos: 0 };
+function chargerTheme(nom) {
+  const t = THEMES[nom] || THEMES[THEME_DEFAUT];
+  T.nom = THEMES[nom] ? nom : THEME_DEFAUT;
+  T.principal.set(t.principal); T.accent.set(t.accent); T.erreur.set(t.erreur);
+  T.fond.set(...t.fond); T.grille.set(...t.grille); T.accentRepos = t.accentRepos;
+}
+chargerTheme(THEME_DEFAUT);
+
+// La transition d'armure (le réacteur « recharge ») : il s'éteint (0 à 0,45 s), change de couleur dans le noir,
+// puis se rallume en surcharge avec une onde de choc et les bobines en chenillard, et se stabilise vers 1,8 s.
+const RECHARGE = { extinction: 0.45, surcharge: 0.95, fin: 1.8 };
 // réglages par état : vitesse de rotation, agitation du cœur, intensité, tourbillon et aspiration des particules
 const ETATS = {
-  repos:     { vitesse: 0.22, agitation: 0.0, intensite: 0.38, tourbillon: 0.10, aspiration: 0.0, accent: 0.0, couleur: CYAN },
-  ecoute:    { vitesse: 0.45, agitation: 0.2, intensite: 0.62, tourbillon: 0.25, aspiration: 1.0, accent: 0.0, couleur: CYAN },
-  reflexion: { vitesse: 2.10, agitation: 1.0, intensite: 0.62, tourbillon: 1.00, aspiration: 0.3, accent: 1.0, couleur: CYAN },
-  parole:    { vitesse: 0.70, agitation: 0.3, intensite: 0.46, tourbillon: 0.35, aspiration: 0.0, accent: 0.0, couleur: CYAN },
-  erreur:    { vitesse: 0.30, agitation: 0.6, intensite: 0.55, tourbillon: 0.20, aspiration: 0.0, accent: 0.0, couleur: ROUGE },
+  repos:     { vitesse: 0.22, agitation: 0.0, intensite: 0.38, tourbillon: 0.10, aspiration: 0.0, accent: 0.0 },
+  ecoute:    { vitesse: 0.45, agitation: 0.2, intensite: 0.62, tourbillon: 0.25, aspiration: 1.0, accent: 0.0 },
+  reflexion: { vitesse: 2.10, agitation: 1.0, intensite: 0.62, tourbillon: 1.00, aspiration: 0.3, accent: 1.0 },
+  parole:    { vitesse: 0.70, agitation: 0.3, intensite: 0.46, tourbillon: 0.35, aspiration: 0.0, accent: 0.0 },
+  erreur:    { vitesse: 0.30, agitation: 0.6, intensite: 0.55, tourbillon: 0.20, aspiration: 0.0, accent: 0.0, erreur: true },
 };
 
 // bruit de simplex 3D (Ashima Arts, domaine public, MIT) : déformation du cœur
@@ -85,20 +103,21 @@ export function creerReacteur(canvas) {
 
   // ---------------------------------------------------------------- fond : dégradé, grille de points, bande de balayage
   const fond = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
-    uniforms: { uTemps: U.uTemps, uResolution: { value: new THREE.Vector2(innerWidth, innerHeight) }, uDiscret: U.uDiscret },
+    uniforms: { uTemps: U.uTemps, uResolution: { value: new THREE.Vector2(innerWidth, innerHeight) }, uDiscret: U.uDiscret,
+      uFond: { value: new THREE.Vector3(...THEMES[THEME_DEFAUT].fond) }, uGrille: { value: new THREE.Vector3(...THEMES[THEME_DEFAUT].grille) } },
     depthWrite: false, depthTest: false,
     vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
     fragmentShader: `
-      uniform float uTemps; uniform vec2 uResolution; uniform float uDiscret; varying vec2 vUv;
+      uniform float uTemps; uniform vec2 uResolution; uniform float uDiscret; uniform vec3 uFond; uniform vec3 uGrille; varying vec2 vUv;
       void main(){
         vec2 p = vUv - 0.5; p.x *= uResolution.x / uResolution.y;
         float r = length(p);
-        vec3 c = mix(vec3(0.027,0.086,0.15), vec3(0.0), smoothstep(0.0, 1.05, r));
+        vec3 c = mix(uFond, vec3(0.0), smoothstep(0.0, 1.05, r));
         vec2 g = fract(gl_FragCoord.xy / 46.0) - 0.5;
         float point = smoothstep(0.06, 0.0, length(g)) * (1.0 - smoothstep(0.2, 1.0, r));
-        c += vec3(0.37,0.89,1.0) * point * 0.10 * (1.0 - uDiscret * 0.7);
+        c += uGrille * point * 0.10 * (1.0 - uDiscret * 0.7);
         float bande = smoothstep(0.012, 0.0, abs(fract(vUv.y - uTemps * 0.045) - 0.5)) * 0.035;
-        c += vec3(0.37,0.89,1.0) * bande * (1.0 - uDiscret);
+        c += uGrille * bande * (1.0 - uDiscret);
         gl_FragColor = vec4(c, 1.0);
       }`,
   }));
@@ -315,10 +334,33 @@ export function creerReacteur(canvas) {
   pivot.add(decompte);
   const D = { debut: 0, duree: 0, actif: false };
 
+  // le visage de particules, dans le même repère que les anneaux d'où il naît
+  const visage = creerVisage(U);
+  reacteur.add(visage.objet);
+
+  // l'hologramme : devant le réacteur, posé au-dessus de la table (consigne 4)
+  const hologramme = creerHologramme(U);
+  hologramme.placer(0, -0.55, 2.2, 2.3);
+  scene.add(hologramme.objet);
+
+  // le globe (consigne 7) : à la même place que l'hologramme, mais posé sur son centre
+  const globe = creerGlobe(U);
+  globe.placer(0, 0.5, 2.2, 1.35);
+  scene.add(globe.objet);
+
   // ---------------------------------------------------------------- état, cibles et boucle
   const S = { etat: "repos", niveau: 0, niveauCible: 0, micro: 0, microCible: 0, vitesse: 0.22, aspiration: 0, tourbillon: 0.1,
-    decalage: 0, decalageCible: 0, rayonMax: 0, echelle: 1, discret: 0, discretCible: 0, erreurJusqua: 0, avant: "repos" };
+    recul: 0, decalage: 0, decalageCible: 0, rayonMax: 0, echelle: 1, discret: 0, discretCible: 0, erreurJusqua: 0, avant: "repos" };
   const couleurCible = CYAN.clone();
+  const R = { actif: false, debut: 0, bascule: false, suivant: THEME_DEFAUT, facteur: 1, elan: 1 };
+  const surBascule = [];
+  function basculerCouleurs(instantane = false) {    // au creux de l'extinction : la nouvelle armure, d'un coup
+    chargerTheme(R.suivant);
+    U.uCouleur.value.copy(T.principal); U.uAccent.value.copy(T.accent);
+    fond.material.uniforms.uFond.value.copy(T.fond); fond.material.uniforms.uGrille.value.copy(T.grille);
+    R.bascule = true;
+    surBascule.forEach(f => f(T.nom, instantane));
+  }
   const rappels = [];
   const temps = new Float32Array(600); let indexTemps = 0, images = 0;
   let dernier = performance.now(), debut = dernier, sauter = false, lentes = 0;
@@ -361,9 +403,25 @@ export function creerReacteur(canvas) {
     S.decalage += (S.decalageCible - S.decalage) * k * 0.8;
     S.discret += (S.discretCible - S.discret) * k * 0.8;
     const erreur = S.etat === "erreur";
-    couleurCible.copy(erreur ? ROUGE : cible.couleur);
+    couleurCible.copy(erreur ? T.erreur : T.principal);
     U.uCouleur.value.lerp(couleurCible, k);
-    U.uAccentForce.value += (cible.accent - U.uAccentForce.value) * k;
+    U.uAccent.value.lerp(T.accent, k);
+    U.uAccentForce.value += (Math.max(cible.accent, T.accentRepos) - U.uAccentForce.value) * k;
+    fond.material.uniforms.uFond.value.lerp(T.fond, k); fond.material.uniforms.uGrille.value.lerp(T.grille, k);
+    // la recharge : extinction, bascule des couleurs dans le noir, surcharge, retour au calme
+    R.facteur = 1; R.elan = 1;
+    if (R.actif) {
+      const p = (t - R.debut) / 1000;
+      if (p < RECHARGE.extinction) R.facteur = 1 - 0.9 * THREE.MathUtils.smootherstep(p, 0, RECHARGE.extinction);
+      else {
+        if (!R.bascule) basculerCouleurs();
+        const montee = THREE.MathUtils.smootherstep(p, RECHARGE.extinction, RECHARGE.surcharge);
+        const calme = THREE.MathUtils.smootherstep(p, RECHARGE.surcharge, RECHARGE.fin);
+        R.facteur = 0.1 + montee * 1.9 - calme * 0.9;              // 0,1 -> 2,0 (surcharge) -> 1,0
+        R.elan = 1 + montee * 5 * (1 - calme);                     // les anneaux s'emballent puis ralentissent
+        if (p >= RECHARGE.fin) R.actif = false;
+      }
+    }
     U.uAgitation.value += (cible.agitation - U.uAgitation.value) * k;
     U.uNiveau.value = S.niveau;
     U.uDiscret.value = S.discret;
@@ -373,7 +431,15 @@ export function creerReacteur(canvas) {
     let intensite = cible.intensite + (S.etat === "repos" ? souffle * 0.12 : 0) + S.niveau * 0.4 + S.micro * 0.35;
     if (S.etat === "reflexion") intensite += 0.14 * Math.sin(tS * 9);
     if (erreur) intensite *= 0.75 + 0.25 * Math.round(Math.random());
-    U.uIntensite.value += (intensite - U.uIntensite.value) * 0.35;
+    // le visage (« montre-toi ») : le réacteur s'éteint pendant que ses particules quittent les anneaux ;
+    // un hologramme affiché devant lui le fait passer au second plan
+    hologramme.animer(dt, tS);
+    globe.animer(dt, tS);
+    // un hologramme devant lui : le réacteur recule et rapetisse, il devient le projecteur de la scène
+    S.recul += ((hologramme.visible || globe.visible ? 1 : 0) - S.recul) * k * 0.7;
+    const fv = visage.forme;
+    const eteint = (fv < 0.35 ? 1 - (fv / 0.35) * 0.9 : 1) * (1 - S.recul * 0.65);
+    U.uIntensite.value += (intensite * R.facteur * eteint - U.uIntensite.value) * 0.35;
     uPoussiere.uTourbillon.value = S.tourbillon; uPoussiere.uAspiration.value = S.aspiration;
     uPoussiere.uAngle.value += dt * (0.015 + S.tourbillon * 0.09);
     U.uPhaseBruit.value += dt * (0.35 + U.uAgitation.value * 0.9 + S.niveau * 1.2);
@@ -387,10 +453,17 @@ export function creerReacteur(canvas) {
       echelleCible = Math.max(0.45, Math.min(1, S.rayonMax / (TAILLE * 2.62 * pxParUnite)));
     }
     S.echelle += (echelleCible - S.echelle) * k * 0.8;
-    const echelle = (1 - S.discret * 0.62) * S.echelle;
+    const echelle = (1 - S.discret * 0.62) * (1 - S.recul * 0.4) * S.echelle;
     reacteur.scale.setScalar(TAILLE * echelle);
     table.scale.setScalar(TAILLE_TABLE * echelle);
-    reacteur.position.y = 0.45 + Math.sin(tS * 0.8) * 0.06 * (1 - S.discret);
+    reacteur.position.y = 0.45 + Math.sin(tS * 0.8) * 0.06 * (1 - S.discret) + S.recul * 0.5;
+    reacteur.position.z = -S.recul * 3.4;
+    table.position.z = -S.recul * 3.4;
+    visage.animer(dt, tS, S.etat === "parole" ? S.niveau : S.niveau * 0.5);
+    pivot.visible = fv < 0.35;
+    pivot.scale.setScalar(1 + fv * 0.8);
+    visage.objet.rotation.y = Math.sin(tS * 0.21) * 0.14;
+    visage.objet.rotation.x = Math.sin(tS * 0.17) * 0.05;
     pivot.rotation.y = Math.sin(tS * 0.21) * 0.2;
     pivot.rotation.x = -0.1 + Math.sin(tS * 0.17) * 0.07;
     const battement = S.etat === "parole" ? 1 + S.niveau * 0.22 : S.etat === "ecoute" ? 0.93 + S.micro * 0.1 : 1 + souffle * 0.03;
@@ -398,12 +471,13 @@ export function creerReacteur(canvas) {
     halo.scale.setScalar(3.2 + U.uIntensite.value * 1.8 + S.niveau * 1.1);
     halo.material.color.copy(U.uCouleur.value);
     halo.material.opacity = Math.min(0.85, 0.45 + U.uIntensite.value * 0.28);
-    for (const a of anneaux) a.rotation.z += a.userData.vitesse * S.vitesse * dt * (S.etat === "reflexion" ? 1.6 : 1);
+    for (const a of anneaux) a.rotation.z += a.userData.vitesse * S.vitesse * dt * (S.etat === "reflexion" ? 1.6 : 1) * R.elan;
     anneaux[1].scale.setScalar(1 + S.aspiration * 0.05 + S.micro * 0.04);
 
     for (let i = 0; i < NB_BOBINES; i++) {
       let lum = 0.45 + U.uIntensite.value * 0.4;
-      if (S.etat === "reflexion") lum = 0.25 + Math.pow(Math.max(0, Math.cos((i / NB_BOBINES) * Math.PI * 2 - tS * 6)), 6) * 1.2;
+      if (S.etat === "reflexion" || R.actif) lum = 0.25 + Math.pow(Math.max(0, Math.cos((i / NB_BOBINES) * Math.PI * 2 - tS * (R.actif ? 14 : 6))), 6) * 1.2;
+      lum *= R.facteur;
       if (S.etat === "parole") lum += S.niveau * 0.8;
       bobines.setColorAt(i, couleurBobine.setRGB(U.uCouleur.value.r * lum, U.uCouleur.value.g * lum, U.uCouleur.value.b * lum));
     }
@@ -428,6 +502,10 @@ export function creerReacteur(canvas) {
       const phase = (tS * 0.9 + i / 3) % 1;
       o.scale.setScalar(0.95 + phase * 1.7);
       o.material.opacity = S.etat === "parole" ? (1 - phase) * S.niveau * 0.7 : 0;
+      if (R.actif && R.bascule) {                     // l'onde de choc de la recharge, les trois anneaux décalés
+        const q = Math.min(1, ((t - R.debut) / 1000 - RECHARGE.extinction) / 0.9 - i * 0.12);
+        if (q > 0 && q < 1) { o.scale.setScalar(0.9 + q * 2.6); o.material.opacity = (1 - q) * 0.9; }
+      }
       o.material.color.copy(U.uCouleur.value);
     });
 
@@ -478,6 +556,43 @@ export function creerReacteur(canvas) {
     decompte(secondes) { D.debut = performance.now(); D.duree = Math.max(0.5, secondes) * 1000; D.actif = true; },
     finDecompte() { D.actif = false; },
     surImage(f) { rappels.push(f); },
+    // l'armure : `instantane` pour un chargement de page (pas d'animation), sinon le réacteur recharge
+    theme(nom, instantane = false) {
+      R.suivant = THEMES[nom] ? nom : THEME_DEFAUT;
+      if (instantane) { R.actif = false; basculerCouleurs(true); return; }
+      R.actif = true; R.debut = performance.now(); R.bascule = false;
+    },
+    get themeActuel() { return R.actif && !R.bascule ? R.suivant : T.nom; },
+    get enRecharge() { return R.actif; },
+    get couleurActuelle() { return "#" + U.uCouleur.value.getHexString(); },   // pour les tests
+    surBascule(f) { surBascule.push(f); },
+    // le visage : `visage(true)` transforme le réacteur en visage de particules, `visage(false)` le rend
+    visage(actif) { visage.actif = !!actif; },
+    get visageActif() { return visage.actif; },
+    get formeVisage() { return visage.forme; },      // pour les tests : 0 réacteur, 1 visage
+    // l'hologramme (consigne 4) : `hologramme(url, objet)` l'affiche, `cacherHologramme()` le retire
+    hologramme(url, objet) { return hologramme.afficher(url, objet); },
+    cacherHologramme() { hologramme.cacher(); },
+    tournerHologramme(delta) { hologramme.tourner(delta); },
+    echelleHologramme(e) { hologramme.echelle(e); },
+    deplacerHologramme(dx, dy) { hologramme.deplacer(dx, dy); },
+    get reglageHologramme() { return hologramme.reglageGeste; },
+    // le globe (consigne 7)
+    globe(quoi, donnees, avenir) {
+      hologramme.cacher();                                   // un seul objet à la fois devant le réacteur
+      if (quoi === "cacher") { globe.cacher(); return null; }
+      if (quoi === "station") globe.placerStation(donnees, avenir);
+      else if (quoi === "seismes") globe.placerSeismes(donnees);
+      return globe.afficher();
+    },
+    get etatGlobe() { return globe.etat; },
+    globeEcran(lat, lon) { return globe.ecran(lat, lon, camera); },
+    get boiteHologramme() { return hologramme.boite; },
+    get etatHologramme() { return { etat: hologramme.etat, objet: hologramme.objetAffiche, impression: hologramme.impression,
+                                    visible: hologramme.visible, sommets: hologramme.sommets, rotation: hologramme.rotation }; },
+    get boucheVisage() { return visage.bouche; },
+    get clignement() { return visage.clignement; },
+    get anneauxVisibles() { return pivot.visible; },
     // le point du réacteur sous le pointeur ? (maintenir pour parler)
     estSur(x, y) {
       const c = reacteur.getWorldPosition(new THREE.Vector3()).project(camera);

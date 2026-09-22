@@ -39,6 +39,12 @@ def _sensibilite_actuelle() -> str:
     return min(SENSIBILITES, key=lambda k: abs(SENSIBILITES[k][0] - niveau))
 
 
+def _etat_majordome() -> dict:
+    from . import majordome
+    ok, raison = majordome.disponible()
+    return {"disponible": ok, "raison": raison, "charge": majordome.MAJORDOME.actif}
+
+
 def lire() -> dict:
     """L'état des réglages pour le formulaire, sans jamais la valeur d'une clé."""
     from . import personnalites
@@ -53,6 +59,7 @@ def lire() -> dict:
         "voix": {"moteur": voix.get("moteur", "local"), "elevenlabs_voix": voix.get("elevenlabs_voix", ""),
                  "elevenlabs_modele": voix.get("elevenlabs_modele", "eleven_multilingual_v2"),
                  "kokoro_voix_en": voix.get("kokoro_voix_en", "bm_george"),
+                 "majordome": _etat_majordome(),
                  "voix_anglaises": [{"id": i, "libelle": l} for i, l in VOIX_ANGLAISES]},
         "cerveau": {"mode": CONFIG.get("cerveau", {}).get("mode", "local")},
         "telegram": {"configure": bool(SECRETS.get("TELEGRAM_TOKEN")) and bool(SECRETS.get("TELEGRAM_CHAT_ID")),
@@ -188,7 +195,10 @@ def ecrire(donnees: dict) -> dict:
             _appliquer_cloud()
     config_change = False
     voix = donnees.get("voix") or {}
-    if voix.get("moteur") in ("local", "elevenlabs"):
+    if voix.get("moteur") in ("local", "elevenlabs", "majordome"):
+        if voix["moteur"] != CONFIG["voix"].get("moteur"):
+            from . import majordome
+            majordome.suivre_moteur(voix["moteur"])       # charge Qwen3-TTS en fond, ou rend la carte graphique
         CONFIG["voix"]["moteur"] = voix["moteur"]
         config_change = True
     for champ in ("elevenlabs_voix", "elevenlabs_modele"):

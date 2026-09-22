@@ -143,7 +143,13 @@ def ouvrir_des_fichiers(v: Verifs):
             n, m = len(appels), len(ouverts)
             reponse = CERVEAU.repondre(q, journal=lambda a, b: None)
             v.info(f"« {q} » -> « {reponse} » ; outils {appels[n:]} ; ouvert {ouverts[m:]}")
-            v.ok(ouverts[m:] == ["JE SUIS BEAU.txt"], f"« {q} » : le fichier du bureau est ouvert", (appels[n:], ouverts[m:]))
+            # « mes notes » sans nom : s'il y a plusieurs fichiers texte sur le bureau réel (le 19/09, un
+            # « Nouveau document texte.txt » est apparu), Jarvis doit demander lequel au lieu de deviner
+            textes = [p.name for d in ouvrir_fichier.dossiers("bureau") for p in d.glob("*") if p.suffix.lower() in (".txt", ".md")]
+            demande = "notes" in q and len(textes) > 1 and not ouverts[m:] and "JE SUIS BEAU" in reponse and "?" in reponse
+            v.ok(ouverts[m:] == ["JE SUIS BEAU.txt"] or demande,
+                 f"« {q} » : le fichier du bureau est ouvert" + (" (ou Jarvis demande lequel, plusieurs fichiers texte)" if "notes" in q else ""),
+                 (appels[n:], ouverts[m:], reponse[:90]))
     finally:
         outils.executer = ancien_executer
         ouvrir_fichier.ouvrir = ancien_ouvrir

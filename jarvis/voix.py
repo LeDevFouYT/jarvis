@@ -6,6 +6,8 @@
               (quatre fois plus lent sur ce processeur) et DirectML (ConvTranspose refusé par le pilote).
   elevenlabs  API ElevenLabs, clé ELEVENLABS_API_KEY dans .secrets, voix dans config.json, modèle multilingue.
               Clé absente ou API en panne : repli sur local sans planter, événement `voix_repli`.
+  majordome   Qwen3-TTS en local sur la carte graphique, voix de majordome inventée par description, chaque phrase
+              réécoutée par Whisper (jarvis/majordome.py). Indisponible (modèle, place sur la carte) : repli sur local.
 Lecture par sounddevice, phrase par phrase pendant que le cerveau génère encore, niveau sonore diffusé
 20 fois par seconde, interruption immédiate (`taire`), cache disque par moteur, voix et texte.
 Événements : parole_debut, phrase (avec sa durée), premier_son (le premier bloc réellement joué d'une prise,
@@ -132,9 +134,13 @@ def _elevenlabs(texte: str) -> np.ndarray:
 # Cache disque : cache/voix/<moteur>/<sha1(voix|texte)>.npy
 # =============================================================================================
 def _chemin_cache(moteur: str, texte: str, langue: str = "fr"):
-    voix = REGLAGES.get("elevenlabs_voix") if moteur == "elevenlabs" else voix_kokoro(langue)[0]
+    voix = (REGLAGES.get("elevenlabs_voix") if moteur == "elevenlabs"
+            else f"majordome|{langue}" if moteur == "majordome" else voix_kokoro(langue)[0])
     cle = hashlib.sha1(f"{voix}|{texte.strip()}".encode("utf-8")).hexdigest()
     return CACHE / moteur / f"{cle}.npy"
+
+
+_REPLI_DIT = [None]
 
 
 def synthetiser(texte: str, moteur: str | None = None, langue: str = "fr") -> tuple[np.ndarray, dict]:
@@ -142,7 +148,32 @@ def synthetiser(texte: str, moteur: str | None = None, langue: str = "fr") -> tu
     demande = moteur or REGLAGES.get("moteur", "local")
     infos = {"moteur_demande": demande, "moteur": demande, "cache": False, "repli": None, "langue": langue}
     t = time.time()
-    if demande == "elevenlabs":
+    if demande == "majordome":
+        from . import majordome
+        infos["voix"] = "majordome"
+        chemin = _chemin_cache("majordome", texte, langue)
+        if REGLAGES.get("cache", True) and chemin.exists():
+            infos.update(cache=True, duree=round(time.time() - t, 3))
+            return np.load(chemin), infos
+        if not majordome.MAJORDOME.actif and majordome.MAJORDOME.verrou.locked():
+            infos["repli"] = "la voix du majordome se charge encore"          # pas d'attente de 30 s au démarrage
+        else:
+            try:
+                audio, rapport = majordome.MAJORDOME.synthetiser(texte, langue, FREQ)
+                if REGLAGES.get("cache", True) and rapport["score"] == 0:           # seule une prise juste est gardée
+                    chemin.parent.mkdir(parents=True, exist_ok=True)
+                    np.save(chemin, audio)
+                infos.update(duree=round(time.time() - t, 3), reecoute=rapport)
+                return audio, infos
+            except majordome.Indisponible as e:
+                infos["repli"] = str(e)
+            except Exception as e:
+                infos["repli"] = f"voix du majordome en échec ({type(e).__name__} : {e})"
+        infos["moteur"] = "local"
+        if (infos["repli"], int(time.time() // 60)) != _REPLI_DIT[0]:  # une note par raison et par minute, pas par phrase
+            _REPLI_DIT[0] = (infos["repli"], int(time.time() // 60))
+            _emettre("voix_repli", raison=infos["repli"])
+    elif demande == "elevenlabs":
         if not elevenlabs_configure():
             infos["repli"] = "clé ElevenLabs ou identifiant de voix absent"
         else:

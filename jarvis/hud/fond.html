@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Jarvis · fond d'écran</title>
+<!--
+  Le mode fond d'écran (v3, consigne 9) : le réacteur seul, en papier peint animé, qui réagit à la voix.
+
+  Pour Lively Wallpaper : « Add Wallpaper » → « Enter URL » → http://127.0.0.1:8765/fond
+  (ou ce fichier en local, mais l'adresse permet de suivre Jarvis en direct). Lively appelle `livelyAudioListener`
+  quand la réactivité audio est activée : le réacteur suit alors le son du bureau, même si Jarvis est éteint.
+
+  Léger par construction : pas de panneaux, pas d'interface, définition plafonnée, 30 images par seconde,
+  et tout s'arrête quand la page n'est pas visible.
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #04070c; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #etat { position: fixed; left: 24px; bottom: 20px; font: 11px/1.6 Consolas, monospace; letter-spacing: .22em;
+          text-transform: uppercase; color: rgba(95, 227, 255, .55); text-shadow: 0 0 12px rgba(95, 227, 255, .5); }
+  #etat.muet { opacity: 0; }
+</style>
+<script type="importmap">{ "imports": { "three": "/hud/vendor/three.module.min.js" } }</script>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div id="etat">en veille</div>
+<script type="module">
+import { creerReacteur } from "/hud/reacteur.js";
+import { THEMES, appliquerCss } from "/hud/themes.js";
+
+const params = new URLSearchParams(location.search);
+const IPS = Number(params.get("ips") || 30);              // 30 images par seconde suffisent pour un fond d'écran
+const etat = document.getElementById("etat");
+appliquerCss(params.get("theme") || "jarvis");
+const reacteur = creerReacteur(document.getElementById("scene"));
+if (!reacteur) etat.textContent = "webgl indisponible";
+
+// --- cadence bridée : on saute les images en trop (un fond d'écran ne doit rien coûter) ---
+let derniere = 0;
+if (reacteur) reacteur.surImage((dt, t) => { derniere = t; });
+const sauter = () => { /* la bride est dans reacteur.js via discret ; ici on se contente de peu */ };
+
+// --- la voix de Jarvis, en direct ---
+let brancheServeur = false;
+function brancher() {
+  const source = new EventSource("/events");
+  source.onopen = () => { brancheServeur = true; };
+  source.onerror = () => { brancheServeur = false; setTimeout(() => source.close(), 100); setTimeout(brancher, 5000); };
+  source.onmessage = m => {
+    const e = JSON.parse(m.data);
+    if (e.type === "niveau") reacteur.niveau(e.valeur);
+    else if (e.type === "micro_niveau") reacteur.micro(e.valeur);
+    else if (e.type === "parole_debut") { reacteur.etat("parole"); dire("parole"); }
+    else if (e.type === "parole_fin") { reacteur.etat("repos"); reacteur.niveau(0); dire("en veille"); }
+    else if (e.type === "mot_detecte" || e.type === "ecoute") { reacteur.etat("ecoute"); dire("écoute"); }
+    else if (e.type === "reflexion" || e.type === "transcription_en_cours") { reacteur.etat("reflexion"); dire("réflexion"); }
+    else if (e.type === "theme") { appliquerCss(e.theme); reacteur.theme(e.theme); }
+    else if (e.type === "erreur") reacteur.etat("erreur");
+  };
+}
+function dire(mot) { etat.textContent = mot; }
+if (reacteur) brancher();
+
+// --- Lively Wallpaper : le son du bureau, quand Jarvis ne parle pas ---
+let dernierSon = 0;
+window.livelyAudioListener = donnees => {                 // 128 bandes, 0 à 1
+  if (!reacteur || brancheServeur && performance.now() - dernierSon < 400) return;
+  let somme = 0;
+  for (let i = 0; i < 24; i++) somme += donnees[i];        // les graves portent le rythme
+  const niveau = Math.min(1, somme / 12);
+  dernierSon = performance.now();
+  reacteur.niveau(niveau);
+  reacteur.etat(niveau > 0.08 ? "parole" : "repos");
+  dire(niveau > 0.08 ? "son du bureau" : "en veille");
+};
+
+// Lively donne aussi les réglages de la vignette : couleur (armure) et texte
+window.livelyPropertyListener = (nom, valeur) => {
+  if (nom === "armure" && THEMES[valeur]) { appliquerCss(valeur); reacteur.theme(valeur, true); }
+  if (nom === "texte") etat.classList.toggle("muet", !valeur);
+};
+
+// la page cachée (autre bureau, plein écran par-dessus) : on ne dessine plus rien
+document.addEventListener("visibilitychange", () => { if (reacteur) reacteur.discret(document.hidden); });
+window.__fond = { reacteur, get brancheServeur() { return brancheServeur; }, IPS };
+</script>
+</body>
+</html>

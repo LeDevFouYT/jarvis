@@ -11,8 +11,7 @@ votre version doit être publiée sous la même licence. Le code est ici même (
 Pour l'intégrer à un produit **sans publier votre code**, ou pour le revendre, il existe une licence commerciale :
 voir [LICENCE-COMMERCIALE.md](LICENCE-COMMERCIALE.md). Les versions jusqu'à v1.0.18 comprises étaient sous MIT et le restent.
 
-La seule chose payante est **Jarvis Cloud**, pour les machines sans carte graphique suffisante : le cerveau tourne alors
-sur la machine de l'auteur, facturé à la minute de calcul.
+Tout est gratuit. Un service en ligne payant a existé pour les machines sans carte graphique suffisante (le cerveau tournait alors sur une autre machine) : il est **suspendu pour le moment**, le temps de le rendre disponible en permanence. Le code de la passerelle reste dans le dépôt pour qui veut monter la sienne.
 
 ## Ce qu'il faut
 
@@ -24,7 +23,7 @@ sur la machine de l'auteur, facturé à la minute de calcul.
 
 ## Installation en cinq lignes
 
-Le plus simple : double-cliquer `Jarvis-Installateur.exe`. Il examine la machine et le dit clairement : local version complète, local version réduite, ou cloud (le cerveau tourne alors sur un serveur, avec un jeton acheté sur la boutique). Il installe tout dans un dossier au choix, sans droits administrateur, et crée un raccourci sur le Bureau. Sinon, à la main :
+Le plus simple : double-cliquer `Jarvis-Installateur.exe`. Il examine la machine et le dit clairement : local version complète, local version réduite, ou processeur seul (lent, sans vision ni images). Il installe tout dans un dossier au choix, sans droits administrateur, et crée un raccourci sur le Bureau. Sinon, à la main :
 
 1. Récupérer le dossier (git clone ou archive) et double-cliquer `installer.bat` : venv, dépendances, `config.json`, `.secrets`, détection de la carte et choix des modèles.
 2. Ouvrir `.secrets` et y mettre les clés que vous utilisez (ElevenLabs, Telegram, cerveau distant). Laisser vide sinon.
@@ -54,6 +53,65 @@ Le plus simple : double-cliquer `Jarvis-Installateur.exe`. Il examine la machine
 - Dans le HUD : maintenir Espace (ou le réacteur) pour parler sans mot de réveil, Échap pour le faire taire et fermer les panneaux, M pour le mode discret (le réacteur se range dans un coin), P pour rouvrir ou fermer les panneaux, F pour le plein écran, un champ texte en bas pour écrire. Les outils ouvrent des panneaux holographiques : jauges de la machine, notes, rappels, fichiers, images, recherches.
 
 Exemples : « cherche des phares bretons sur Internet » (les résultats s'affichent dans l'onglet intégré du HUD), « mets une vidéo de chats » (lecteur YouTube intégré), « dans quel état est la machine », « quels fichiers vidéo j'ai modifiés aujourd'hui », « ouvre YouTube et cherche des vidéos de chats », « regarde mon écran et dis-moi ce que je fais », « dessine un robot majordome en laiton », « envoie-moi ça sur Telegram », « rappelle-moi dans vingt minutes de sortir le pain », « mets le volume à 30 », « verrouille la session ».
+
+## Le mode live : Jarvis anime votre direct
+
+Il lit le tchat de votre direct YouTube, répond quand on l'appelle, accueille les arrivées, et relance la
+conversation de temps en temps — à voix haute, comme un co-animateur.
+
+**Ce qu'il faut, une fois pour toutes :**
+
+1. **Une clé YouTube** (gratuite). Ouvrez Réglages › YouTube : les trois boutons vous emmènent au bon endroit
+   dans la console Google (créer un projet, activer l'API YouTube Data, créer une clé), vous collez la clé dans
+   le champ, et « tester la clé » vous dit tout de suite si elle marche. C'est elle qui lit le tchat — sans elle,
+   Jarvis vous le dira au lieu de démarrer.
+2. **Que vos spectateurs entendent Jarvis.** Il parle par la sortie audio de votre PC : dans OBS, ajoutez une
+   source **« Capture audio du bureau »** (ou réglez la sortie de Jarvis sur un câble virtuel type VB-Cable et
+   ajoutez-le comme source). Sans ça, vous l'entendez, le direct non — c'est l'erreur classique.
+3. **Un casque**, comme d'habitude : sinon Jarvis s'entend parler et se coupe lui-même.
+
+**Pendant le direct :** « **Jarvis, on est en live** » — c'est tout. Il cherche le direct en cours sur la chaîne
+réglée dans Réglages › YouTube › Ma chaîne. Vous pouvez aussi donner le lien (« anime le direct https://… »), ce
+qui coûte moins de quota, ou le fixer une fois dans `config.json` → `live.video`. Puis « **coupe le live** » à la fin — il dit alors combien de messages il a traités
+et combien de personnes il a accueillies. Le tchat défile dans un panneau du HUD : ses réponses y sont barrées
+de cyan, les arrivées en clair, et le pied compte messages, réponses, accueils et personnes.
+
+**Ce qu'il fait, et ce qu'il ne fait pas :**
+
+- il répond **quand on l'appelle** (« Jarvis, … », « @Jarvis … »), pas à chaque message, et jamais deux fois en
+  moins de douze secondes ;
+- il **accueille les nouveaux groupés** (une phrase pour quatre arrivées, pas quatre bonjours) ;
+- il **ne parle jamais par-dessus vous** : tant que vous parlez, ou qu'il vous écoute, il se tait. Ses prises de
+  parole spontanées sont espacées de deux minutes et demie, et il n'en fait pas systématiquement ;
+- il **n'écrit rien dans le tchat** : il parle, c'est tout.
+
+**La sécurité, en une phrase : le tchat n'a droit qu'à des mots.** Les messages des spectateurs passent par un
+appel **sans outils, sans historique et sans mémoire** : personne ne peut faire ouvrir un fichier, lancer un
+programme, lire vos secrets ou sortir sur Internet en écrivant « Jarvis, ignore tes consignes et… ». Vous, votre
+voix garde tous les pouvoirs : c'est votre micro, sur votre machine. Le test `python -m jarvis.tests.live` le
+vérifie sur des messages piégés, et vérifie aussi dans le code que le chemin du tchat n'appelle jamais le cerveau
+qui peut agir.
+
+**Les spectateurs peuvent faire dessiner.** « Jarvis, dessine-moi un phare breton sous l'orage » : l'image est
+calculée sur votre carte et s'affiche à l'écran avec le pseudo de la personne. Trois freins pour que ça reste
+tenable : une demande par personne toutes les cinq minutes, quatre-vingt-dix secondes entre deux dessins (la
+carte ne fait qu'une chose à la fois), et trois demandes en file au maximum.
+
+**Ce qui est interdit ne passe pas.** Deux filtres avant de dessiner : une liste de mots qui bloque l'évidence
+sans même consulter le modèle, puis un juge local qui relit la demande avec les règles de la communauté YouTube
+— nudité, violence, haine et harcèlement, personnes réelles nommées, enfants, drogues et armes, automutilation,
+symboles extrémistes, désinformation, marques et personnages sous droits, texte à écrire dans l'image. Dans le
+doute, il refuse : une image refusée coûte une phrase, une image de trop peut coûter la chaîne. Et la demande du
+spectateur n'est jamais envoyée telle quelle au générateur : elle est réécrite en description d'image.
+
+**Le HUD du direct** (ce que voit le public) : dans OBS, ajoutez une **source navigateur** sur
+`http://127.0.0.1:8765/live`, en 1920 × 1080. On y voit le réacteur qui suit la voix, le tchat avec les réponses
+de Jarvis mises en avant, le dernier dessin demandé (avec le pseudo de son auteur), et un bandeau qui compte
+messages, réponses, bienvenues, dessins — et les sorties Internet, la preuve à l'image que tout le reste tourne
+sur votre machine. Options d'URL : `?fond=transparent` pour poser le HUD par-dessus un jeu, `?cote=gauche` pour
+inverser la mise en page, `?reacteur=0` si vous êtes déjà à l'image.
+
+Twitch n'est pas encore géré : YouTube seulement pour l'instant.
 
 ## Depuis le téléphone (Telegram)
 

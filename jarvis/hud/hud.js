@@ -2,6 +2,10 @@
 // voix, journal des outils, panneaux holographiques, barre d'état, saisie, micro du navigateur, raccourcis.
 import { creerReacteur } from "./reacteur.js";
 import { creerPanneaux } from "./panneaux.js";
+import { THEMES, THEME_DEFAUT, appliquerCss } from "./themes.js";
+import { creerSons } from "./sons.js";
+import { creerMains } from "./mains.js";
+import { creerScan } from "./scan.js";
 
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
@@ -13,7 +17,10 @@ if (!reacteur) {
   document.body.classList.add("sans3d");
   const rappels = [];
   (function boucle(t) { requestAnimationFrame(boucle); rappels.forEach(f => f(0.016, t)); })(performance.now());
-  reacteur = { etat() {}, niveau() {}, micro() {}, decaler() {}, discret() {}, erreurLongue() {}, decompte() {}, finDecompte() {},
+  const basculeSansWebgl = [];
+  reacteur = { etat() {}, niveau() {}, visage() {}, visageActif: false, hologramme() {}, cacherHologramme() {}, micro() {}, decaler() {}, discret() {}, erreurLongue() {}, decompte() {}, finDecompte() {},
+    theme(nom, instantane) { this.themeActuel = nom; basculeSansWebgl.forEach(f => f(nom, instantane)); }, themeActuel: THEME_DEFAUT, enRecharge: false,
+    surBascule: f => basculeSansWebgl.push(f),
     surImage: f => rappels.push(f),
     estSur: () => false, rayonEcran: () => innerHeight * 0.17, centreEcran: () => ({ x: innerWidth / 2, y: innerHeight * 0.46 }),
     stats: () => ({}), mesurer: async () => ({}), carte: () => "aucune (WebGL indisponible)" };
@@ -53,7 +60,146 @@ const voile = $("voile"), voileImg = voile.querySelector("img");
 function agrandir(url) { voileImg.src = url; voile.classList.add("visible"); }
 voile.onclick = () => voile.classList.remove("visible");
 
-const panneaux = creerPanneaux($("panneaux"), { agrandir, surChangement: recentrer });
+// ====================================================================== sons d'interface, armures, mode vidéo
+const sons = creerSons();
+const panneaux = creerPanneaux($("panneaux"), { agrandir, surChangement: recentrer,
+  maxPetits: () => (document.body.classList.contains("video") ? 1 : 3),
+  surOuverture: () => sons.jouer("panneau", reacteur.themeActuel) });
+
+// L'armure : le réacteur recharge (reacteur.js), les couleurs de l'interface basculent au creux de son extinction,
+// le son suit. `instantane` au chargement de la page. Mémorisée par le serveur (config.json, hud.theme).
+let finEclair = 0;
+reacteur.surBascule((nom, instantane) => {
+  appliquerCss(nom);
+  if (instantane) return;                            // armure retrouvée au chargement : ni éclair ni son
+  document.body.classList.remove("recharge"); void document.body.offsetWidth; document.body.classList.add("recharge");
+  clearTimeout(finEclair); finEclair = setTimeout(() => document.body.classList.remove("recharge"), 1200);
+  sons.jouer("allumage", nom);
+});
+function theme(nom, instantane = false) {
+  if (!THEMES[nom]) nom = THEME_DEFAUT;
+  if (instantane) { appliquerCss(nom); reacteur.theme(nom, true); return nom; }
+  if (nom === reacteur.themeActuel && !reacteur.enRecharge) return nom;
+  sons.jouer("extinction", reacteur.themeActuel);
+  reacteur.theme(nom);
+  return nom;
+}
+
+// Le mode vidéo (touche V) : textes deux fois plus gros, un seul panneau à la fois, contraste renforcé, pour filmer
+// l'écran. Mémorisé dans le navigateur.
+function video(actif) {
+  document.documentElement.classList.toggle("video", actif);
+  document.body.classList.toggle("video", actif);
+  if (actif) panneaux.limiter(1);
+  recentrer(panneaux.nombre);
+  try { localStorage.setItem("jarvis.video", actif ? "1" : ""); } catch (_) {}
+  return actif;
+}
+// La superposition (consigne 9) : elle s'efface quand le HUD est devant nous, pour ne rien recouvrir.
+let presenceEnvoyee = null, battement = 0;
+function annoncerPresence() {
+  const present = !document.hidden && document.hasFocus();
+  if (present === presenceEnvoyee) return;
+  presenceEnvoyee = present;
+  fetch("/presence", { method: "POST", headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ actif: present }) }).catch(() => {});
+}
+addEventListener("focus", annoncerPresence);
+addEventListener("blur", annoncerPresence);
+document.addEventListener("visibilitychange", annoncerPresence);
+addEventListener("beforeunload", () => navigator.sendBeacon("/presence", JSON.stringify({ actif: false })));
+battement = setInterval(() => { presenceEnvoyee = null; annoncerPresence(); }, 8000);   // au cas où un signal se perde
+annoncerPresence();
+
+// Les gestes (consigne 5) : la caméra reste éteinte tant qu'on ne la demande pas, et rien n'est enregistré.
+const mains = creerMains({ reacteur, panneaux, note, sons,
+  reveiller: () => { sons.jouer("reveil", reacteur.themeActuel); demarrerEcoute(); setTimeout(arreterEcoute, 6000); } });
+async function gestes(actif) {
+  const ok = actif ? await mains.demarrer() : (mains.arreter(), false);
+  $("mode").dataset.gestes = ok ? "1" : "";
+  // rien n'est mémorisé : la caméra repart toujours éteinte au chargement de la page (règle de la v3)
+  if (!actif) note("gestes : caméra éteinte");
+  return ok;
+}
+
+// La vidéo tournée par Jarvis (consigne 8) : un panneau qui montre l'avancement puis joue le film.
+function panneauVideo(e) { panneaux.ouvrir(e); }
+function majPanneauVideo(d) {
+  const p = panneaux.ouvertDeGenre("video");
+  const cadre = p && p.querySelector(".h-video");
+  if (cadre && cadre.majVideo) cadre.majVideo(d);
+  else if (d.url) panneaux.ouvrir({ genre: "video", titre: "vidéo", ...d });
+}
+
+// Le mode live (21/09) : le tchat défile dans son panneau, et ce que Jarvis répond y est mis en avant.
+// Le panneau s'ouvre au début du direct et reste ouvert : c'est le fil du direct, pas une notification.
+function majPanneauTchat(d, titre) {
+  let p = panneaux.ouvertDeGenre("tchat");
+  if (!p && titre !== undefined) p = panneaux.ouvrir({ genre: "tchat", titre: titre || "tchat du direct" });
+  const bloc = p && p.querySelector(".h-tchat");
+  if (bloc && bloc.majTchat) bloc.majTchat(d);
+  return bloc;
+}
+
+function surLive(e) {
+  switch (e.quoi) {
+    case "demarre":
+      majPanneauTchat({ ligne: { genre: "jarvis", auteur: "JARVIS", texte: "j'anime le direct" } },
+                      (e.titre || "tchat du direct").slice(0, 46));
+      note("mode live : " + (e.titre || "direct"));
+      sons.jouer("panneau", reacteur.themeActuel);
+      break;
+    case "message":
+      majPanneauTchat({ ligne: { auteur: e.auteur, texte: e.texte } });
+      break;
+    case "repondre":
+      majPanneauTchat({ ligne: { genre: "jarvis", auteur: "JARVIS → " + (e.auteur || ""), texte: e.texte } });
+      break;
+    case "accueillir":
+      majPanneauTchat({ ligne: { genre: "accueil", auteur: "BIENVENUE", texte: e.texte } });
+      break;
+    case "relancer":
+      majPanneauTchat({ ligne: { genre: "jarvis", auteur: "JARVIS", texte: e.texte } });
+      break;
+    case "souci":
+      majPanneauTchat({ ligne: { genre: "souci", auteur: "TCHAT", texte: e.message || "" } });
+      break;
+    case "arrete":
+      majPanneauTchat({ compte: e, fini: true,
+                        ligne: { genre: "jarvis", auteur: "JARVIS", texte: "fin du direct" } });
+      note("fin du mode live");
+      break;
+  }
+  if (e.quoi !== "arrete") majPanneauTchat({ compte: e.compte || null });
+}
+
+// Le scan de la pièce (consigne 6) : la caméra s'allume le temps du balayage, et Jarvis dit ce qu'il a vu.
+const scan = creerScan({ note, sons, reacteur,
+  dire: (phrase, objets) => fetch("/scan/resultat", { method: "POST", headers: { "Content-Type": "application/json" },
+                                                     body: JSON.stringify({ phrase, objets }) }) });
+
+// L'hologramme (consigne 4) : le .glb sculpté est chargé, imprimé de bas en haut, et le temps total annoncé.
+async function hologramme(e) {
+  const t = performance.now();
+  try {
+    const r = await reacteur.hologramme(e.url, e.objet);
+    sons.jouer("allumage", reacteur.themeActuel);
+    const affichage = (performance.now() - t) / 1000;
+    const total = (e.chrono && e.chrono.total ? e.chrono.total : 0) + affichage;
+    note(`hologramme « ${e.objet} » : ${(r && r.sommets ? r.sommets.toLocaleString("fr") + " sommets, " : "")}`
+      + (e.cache ? "déjà sculpté, " : "") + `affiché en ${affichage.toFixed(1)} s · total ${total.toFixed(1)} s`);
+  } catch (err) {
+    note("hologramme : " + err.message);
+  }
+}
+
+// Le visage (« montre-toi », touche J) : le réacteur devient un visage de particules qui parle au rythme de la voix.
+function visage(actif) {
+  if (actif === reacteur.visageActif) return actif;
+  reacteur.visage(actif);
+  sons.jouer(actif ? "allumage" : "extinction", reacteur.themeActuel);
+  return actif;
+}
 function recentrer(nombre) {
   // le réacteur glisse au milieu de l'espace libre entre la transcription et les panneaux
   if (!nombre || document.body.classList.contains("discret")) { reacteur.decaler(0); return; }
@@ -188,7 +334,24 @@ function outilResultat(e) {
 let sorties = 0;
 function recevoir(e) {
   switch (e.type) {
-    case "mot_detecte": case "ecoute": etat("ecoute"); break;
+    case "mot_detecte": case "ecoute": if (etatActuel !== "ecoute") sons.jouer("reveil", reacteur.themeActuel); etat("ecoute"); break;
+    case "theme": theme(e.theme); break;
+    case "visage": visage(!!e.actif); break;
+    case "hologramme": hologramme(e); break;
+    case "hologramme_cacher": reacteur.cacherHologramme(); break;
+    case "gestes": gestes(!!e.actif); break;
+    case "video_debut": panneauVideo({ genre: "video", titre: "vidéo · " + (e.prompt || "").slice(0, 46), pourcent: 0, etape: "préparation" }); etat("reflexion"); break;
+    case "video_avance": majPanneauVideo(e); break;
+    case "video_prete": majPanneauVideo({ url: e.url, duree: e.duree, calcul: e.chrono && e.chrono.rendu });
+      note(`vidéo prête en ${e.chrono && e.chrono.total} s · ${e.duree} s d'images`); sons.jouer("fin", reacteur.themeActuel); break;
+    case "video_ia_erreur": note("vidéo : " + e.message); etat("erreur"); break;
+    case "globe": reacteur.globe(e.quoi, e.donnees, e.avenir); note("globe : " + (e.quoi === "station" ? "Station spatiale en direct"
+      : e.quoi === "seismes" ? `${e.total || (e.donnees || []).length} séismes depuis hier` : "la Terre")); break;
+    case "live": surLive(e); break;
+    case "scan": if (e.actif === false) scan.arreter(); else scan.lancer(); break;
+    case "scan_resultat": note("scan : " + (e.phrase || "rien de reconnu")); break;
+    case "hologramme_etape": note("hologramme : " + e.etape + " de « " + e.objet + " »"); etat("reflexion"); break;
+    case "hologramme_erreur": note("hologramme : " + e.message); etat("erreur"); break;
     case "micro_niveau": reacteur.micro(e.valeur); break;
     case "transcription_en_cours": etat("reflexion"); reacteur.micro(0); break;
     case "transcription": ligneMoi(e.texte); etat("reflexion"); reacteur.micro(0); break;
@@ -196,7 +359,7 @@ function recevoir(e) {
     case "rien_entendu": note("rien entendu"); etat("repos"); reacteur.micro(0); break;
     case "jeton": surJeton(e); break;
     case "phrase": surPhrase(e); break;
-    case "reponse_complete": surReponseComplete(e); if (e.source === "telegram") etat("repos"); break;
+    case "reponse_complete": surReponseComplete(e); sons.jouer("fin", reacteur.themeActuel); if (e.source === "telegram") etat("repos"); break;
     case "parole_debut": etat("parole"); break;
     case "niveau": reacteur.niveau(e.valeur); break;
     case "parole_fin": surParoleFin(e); reacteur.niveau(0); etat("repos"); break;
@@ -224,13 +387,14 @@ function recevoir(e) {
     case "sortie_internet": sorties = e.total; majCompteur(); break;
     case "reglages": note(`réglages : voix ${e.voix}${e.telegram ? ", telegram prêt" : ""}`); rafraichir(); break;
     case "voix_repli": note("voix : repli local (" + e.raison + ")"); break;
+    case "reecoute": if (e.prises > 1 || e.score) note(`réécoute : ${e.prises} prise${e.prises > 1 ? "s" : ""}` + (e.score ? ` · reste ${e.ecarts.map(x => x[1] + " → " + x[2]).join(", ")}` : ` · corrigé (${e.fautes_ecartees.flat().map(x => x[1] + " → " + (x[2] || "rien")).join(", ")})`)); break;
     case "voix_erreur": note("erreur : " + e.message); for (const p of prises.values()) if (!p.parle) reveler(p); etat("erreur"); break;
     case "silence": voixMuette = !!e.actif; note(e.actif ? "silence jusqu'au prochain réveil" : "voix rétablie"); if (e.actif) etat("repos"); break;
     case "titre": note("je vous appellerai " + e.titre); break;
     case "commande": note("commande : " + e.commande); break;
     case "extinction": $("extinction").classList.add("visible"); break;
     case "rappel": note("rappel : " + e.texte); break;
-    case "erreur": case "image_erreur": case "vision_erreur": note("erreur : " + e.message); etat("erreur"); break;
+    case "erreur": case "image_erreur": case "vision_erreur": note("erreur : " + e.message); sons.jouer("erreur", reacteur.themeActuel); etat("erreur"); break;
     // --- il devient humain ---
     case "fenetre_ouverte": reacteur.decompte(e.duree); $("mode").dataset.fenetre = "1"; fenetre(e.duree); break;
     case "fenetre_fermee": reacteur.finDecompte(); fenetre(0); break;
@@ -320,9 +484,11 @@ if (!params.get("hors_ligne")) connecter();
 
 // ====================================================================== barre d'état et cagnotte
 function majCompteur() { $("sorties").textContent = sorties; $("compteur").classList.toggle("sorti", sorties > 0); }
+let themeLu = false;
 async function rafraichir() {
   try {
     const e = await (await fetch("/etat")).json();
+    if (e.theme && !themeLu) { themeLu = true; if (!params.get("theme")) theme(e.theme, true); }
     const g = e.machine && e.machine.gpu;
     if (g) {
       $("vram").textContent = `${(g.vram_utilisee_mo / 1024).toFixed(1)} / ${(g.vram_totale_mo / 1024).toFixed(0)} Go · ${g.temperature} °C`;
@@ -333,7 +499,8 @@ async function rafraichir() {
     if (e.solde) cerveau += e.solde.erreur ? " · passerelle injoignable" : ` · ${e.solde.credit_minutes} min (${e.solde.credit_euros} €)`;
     $("cerveau").textContent = cerveau;
     $("cerveau-mode").classList.toggle("distant", e.cerveau.distant);
-    $("voix").textContent = e.voix.moteur === "elevenlabs" ? (e.voix.elevenlabs ? "ElevenLabs (internet)" : "ElevenLabs absent → Kokoro") : "Kokoro · 100 % local";
+    $("voix").textContent = e.voix.moteur === "elevenlabs" ? (e.voix.elevenlabs ? "ElevenLabs (internet)" : "ElevenLabs absent → Kokoro")
+      : e.voix.moteur === "majordome" ? (e.voix.majordome ? "Majordome · Qwen3-TTS local" : "Majordome en chargement → Kokoro") : "Kokoro · 100 % local";
     voixMuette = !!e.silence;
     if (e.silence) $("voix").textContent += " · silence";
     if (e.service_cloud && e.service_cloud.actif) {
@@ -441,9 +608,14 @@ function ouvrirReglages() {
     const sDisque = nombre("Alerte d'espace disque sous (Go)", r.sentinelle.disque_min_go, 1, 500, 1);
 
     bloc("voix");
-    const moteur = choix([["local", "Kokoro, locale et gratuite"], ["elevenlabs", "ElevenLabs, en ligne (clé requise)"]], r.voix.moteur);
+    const md = r.voix.majordome || {};
+    const moteur = choix([["local", "Kokoro, locale et gratuite"], ["elevenlabs", "ElevenLabs, en ligne (clé requise)"],
+      ["majordome", "Majordome britannique, locale (Qwen3-TTS, carte graphique)" + (md.disponible ? "" : " · indisponible")]], r.voix.moteur);
     const dv = creer("div"); dv.appendChild(creer("label", "", "Moteur de voix"));
     const lv = creer("div", "ligne"); lv.append(moteur, bouton("tester la clé", () => tester("elevenlabs"))); dv.appendChild(lv); f.appendChild(dv);
+    dv.appendChild(creer("small", "", md.disponible
+      ? "Majordome : une voix inventée par description (aucune personne réelle imitée), chaque phrase réécoutée par Whisper et refaite si un mot manque. Environ 2 Go sur la carte graphique tant qu'elle est choisie ; chargée après le cerveau." + (md.charge ? " Chargée." : "")
+      : "Majordome indisponible : " + (md.raison || "?") + "."));
     cle("ELEVENLABS_API_KEY");
     const voixSel = choix([[r.voix.elevenlabs_voix, r.voix.elevenlabs_voix || "aucune voix choisie"]], r.voix.elevenlabs_voix);
     const dx = creer("div"); dx.appendChild(creer("label", "", "Voix ElevenLabs"));
@@ -655,10 +827,15 @@ document.addEventListener("keydown", e => {
   else if (e.code === "KeyF") basculerPleinEcran();
   else if (e.code === "KeyP") { if (panneaux.nombre) panneaux.fermerTout(); else panneaux.rouvrir(); }
   else if (e.code === "KeyM" || e.key === "m" || e.key === "M") basculerDiscret(!document.body.classList.contains("discret"));
+  else if (e.code === "KeyJ") visage(!reacteur.visageActif);
+  else if (e.code === "KeyG") gestes(!mains.actif);
+  else if (e.code === "KeyV") video(!document.body.classList.contains("video"));
+  else if (e.code === "KeyS") note(sons.basculer() ? "sons d'interface activés (S pour couper)" : "sons d'interface coupés (S pour les remettre)");
 });
 document.addEventListener("keyup", e => { if (e.code === "Space") arreterEcoute(); });
 
 try { if (localStorage.getItem("jarvis.discret")) basculerDiscret(true); } catch (_) {}
+try { if (localStorage.getItem("jarvis.video")) video(true); } catch (_) {}
 
 if (params.get("plein")) {
   const premier = () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
@@ -719,6 +896,9 @@ if (force) {
   if (force === "reflexion" && params.get("demo")) ligneMoi("Jarvis, qu'est-ce que tu sais des phares bretons ?");
 }
 if (params.get("discret")) basculerDiscret(true);
+if (params.get("theme")) theme(params.get("theme"), true);
+if (params.get("video")) video(true);
+if (params.get("visage")) reacteur.visage(true);
 if (params.get("extinction")) $("extinction").classList.add("visible");
 if (params.get("ips")) {
   document.body.classList.add("avec-ips");
@@ -731,4 +911,4 @@ function rejouer(evenements) {
   evenements.forEach(e => setTimeout(() => recevoir(e), Math.max(0, (e.t - t0) * 1000 - (performance.now() - debut))));
   return (evenements[evenements.length - 1].t - t0);
 }
-window.__jarvis = { reacteur, panneaux, recevoir, rejouer, etat, basculerDiscret, ouvrirReglages, DEMO };
+window.__jarvis = { reacteur, panneaux, recevoir, rejouer, etat, basculerDiscret, ouvrirReglages, DEMO, THEMES, theme, video, visage, hologramme, gestes, mains, scan, sons };

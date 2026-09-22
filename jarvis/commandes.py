@@ -9,6 +9,7 @@
   « passe en mode coach »                  -> personnalite (argument : coach, sarcastique ou majordome)
   « désactive la sentinelle » / « active » -> sentinelle (argument : off / on)
   « annule »                               -> annuler : défait le dernier rangement
+  « passe en armure Mark III »             -> armure (argument : jarvis, mark3, friday ou ultron)
   « oui » / « non », si une confirmation est en attente (fermer une fenêtre avec du travail) -> confirmer / refuser"""
 import re
 import unicodedata
@@ -51,6 +52,64 @@ _OUBLIER_SOUVENIR = re.compile(r"^(?:jarvis[,.]?\s*)?(?:oublie|oubliez|efface de
 _PERSONNALITE = re.compile(r"\b(?:passe|passes|mets[- ]toi|bascule)\s+en\s+mode\s+(majordome|sarcastique|sarcasme|coach)\b"
                            r"|^(?:jarvis[,.]?\s*)?mode\s+(majordome|sarcastique|coach)[.! ]*$"
                            r"|\bsois\s+(?:mon\s+)?(coach|sarcastique|majordome)\b")
+# « passe en armure Mark III », « mets l'armure Friday », « armure Ultron », « retire l'armure » (v3, consigne 1)
+# « passe en armure Mark III », mais aussi « passe en mode Friday » et « reviens à l'armure Jarvis » : on les dit
+# comme ça sans y penser, et ça ne marchait pas (démo du 20/09).
+_ARMURE = re.compile(r"^(?:(?:hey |ok )?jarvis[,.!]?\s*)?(?:(?:tu peux|peux[- ]tu)\s+)?"
+                     r"(?:(?:passe|passes|passer|mets|mettre|bascule|basculer|active|activer|enfile|enfiler|charge|charger"
+                     r"|equipe[- ]toi|equipe|reviens|revenir|retourne|remets|remettre)\s+(?:a\s+|en\s+|toi\s+en\s+|dans\s+)?"
+                     r"(?:l'|la\s+|le\s+|ton\s+|une\s+|l\s+)?(?:armure|mode)|armure)\s+(.+?)[\s.!?]*$")
+_SANS_ARMURE = re.compile(r"^(?:(?:hey |ok )?jarvis[,.!]?\s*)?(?:retire|enleve|quitte)\s+(?:l'|l\s+|ton\s+)?armure[\s.!?]*$")
+# « montre-toi », « montre-moi ton visage » / « cache-toi », « redeviens le réacteur » (v3, consigne 2)
+_VISAGE = re.compile(r"^(?:(?:hey |ok )?jarvis[,.!]?\s*)?(?:(?:tu peux|peux[- ]tu)\s+)?"
+                     r"(?:montre[- ]?toi|montrez[- ]?vous|te montrer|(?:montre|affiche)[- ]?moi\s+(?:ton|votre)\s+visage|(?:montre|affiche)\s+(?:ton|votre)\s+visage)"
+                     r"(?:\s+(?:a moi|jarvis))?[\s.!?]*$")
+_SANS_VISAGE = re.compile(r"^(?:(?:hey |ok )?jarvis[,.!]?\s*)?(?:(?:tu peux|peux[- ]tu)\s+)?"
+                          r"(?:cache[- ]?toi|cachez[- ]?vous|redeviens\s+(?:le\s+|un\s+)?reacteur|(?:retourne|rentre|reviens)\s+dans\s+(?:le\s+|ton\s+)?reacteur"
+                          r"|reprends?\s+(?:ta|la)\s+forme\s+(?:normale|de reacteur|d'origine)|(?:cache|range|enleve)\s+(?:ton|le)\s+visage)"
+                          r"(?:\s+jarvis)?[\s.!?]*$")
+# « montre-moi la Terre », « où est la Station spatiale ? », « les séismes du jour » (v3, consigne 7)
+_GLOBE = re.compile(r"^(?:(?:hey |ok )?jarvis[,.!]?\s*)?(?:(?:tu peux|peux[- ]tu)\s+)?(?:"
+                    r"(?P<terre>(?:montre|affiche)[- ]?(?:moi\s+)?(?:la\s+)?(?:terre|planete|globe|mappemonde)"
+                    r"|(?:montre|affiche)\s+le\s+globe)"
+                    r"|(?P<station>(?:ou (?:est|se trouve|en est))\s+(?:l'|la\s+|le\s+)?(?:station spatiale|iss|station)"
+                    r"|(?:montre|affiche)[- ]?(?:moi\s+)?(?:la\s+)?station(?: spatiale)?"
+                    r"|(?:position de la|la) station spatiale)"
+                    r"|(?P<seismes>(?:les\s+)?(?:seismes|tremblements de terre)(?: du jour| d'aujourd'hui| recents| de la journee)?"
+                    r"|(?:montre|affiche)[- ]?(?:moi\s+)?les (?:seismes|tremblements de terre)[a-z' ]*)"
+                    r")[\s.!?]*$")
+# « pose-toi sur mon écran », « sors du HUD » / « rentre dans l'interface » (v3, consigne 9)
+_SUPERPOSITION = re.compile(r"^(?:(?:hey |ok )?jarvis[,.!]?\s*)?(?:(?:tu peux|peux[- ]tu)\s+)?(?:"
+                            r"(?P<on>(?:pose|mets)[- ]toi (?:sur|par[- ]dessus) (?:mon )?(?:ecran|windows|le bureau)"
+                            r"|sors du hud|affiche[- ]toi (?:par[- ]dessus|sur) (?:tout|windows|mon ecran)"
+                            r"|active (?:la )?superposition)"
+                            r"|(?P<off>(?:rentre|retourne) dans (?:le hud|l'interface)|quitte mon ecran"
+                            r"|(?:desactive|coupe|enleve) (?:la )?superposition)"
+                            r")[\s.!?]*$")
+# « on est en live », « anime le direct », « coupe le live » (21/09). Le lien du direct peut suivre.
+_LIVE = re.compile(r"^(?:(?:hey |ok )?jarvis[,.!]?\s*)?(?:"
+                   r"(?P<on>(?:on est|je suis|nous sommes) en (?:live|direct)|passe en mode (?:live|direct)"
+                   r"|anime (?:le|mon) (?:live|direct)"
+                   r"|(?:lance|demarre|active) (?:le |mon |la |le mode )?(?:live|direct))"
+                   r"|(?P<off>(?:coupe|arrete|stoppe|termine|desactive|quitte) (?:le |mon )?(?:mode )?(?:live|direct)"
+                   r"|on (?:arrete|coupe) le (?:live|direct)|fin du (?:live|direct))"
+                   r")\s*(?P<lien>\S*)[\s.!?]*$")
+# « mets-toi à gauche », « va en bas » : déplacer la superposition sans souris (v3, consigne 9)
+_PLACE = re.compile(r"^(?:(?:hey |ok )?jarvis[,.!]?\s*)?(?:(?:mets|met|place|pose)[- ]toi|va|passe|deplace[- ]toi)\s+"
+                    r"(?:a |au |en |sur (?:la |le )?)?(?P<coin>gauche|droite|haut|bas|milieu|centre)[\s.!?]*$")
+# « scanne la pièce », « analyse la pièce » (v3, consigne 6)
+_SCAN = re.compile(r"^(?:(?:hey |ok )?jarvis[,.!]?\s*)?(?:(?:tu peux|peux[- ]tu)\s+)?"
+                   r"(?:scanne|scanner|scan|analyse|analyser|balaie|balayer|examine|examiner|regarde|inspecte)\s+"
+                   r"(?:moi\s+)?(?:la\s+|cette\s+|ma\s+|le\s+)?(?:piece|salle|chambre|bureau|environnement|decor|"
+                   r"autour de (?:toi|moi)|ce qu'il y a autour)[\s.!?]*$")
+# « active les gestes », « coupe la caméra » (v3, consigne 5)
+_GESTES = re.compile(r"^(?:(?:hey |ok )?jarvis[,.!]?\s*)?(?:(?:tu peux|peux[- ]tu)\s+)?"
+                     r"(?P<verbe>active|activer|allume|allumer|demarre|demarrer|lance|lancer|desactive|desactiver|coupe|couper|"
+                     r"eteins|eteindre|arrete|arreter)\s+(?:les\s+|le\s+|la\s+)?"
+                     r"(?:gestes|commande[s]? par gestes|camera(?: des gestes)?|suivi des mains)[\s.!?]*$")
+# « cache l'hologramme », « enlève l'hologramme » (v3, consigne 4)
+_CACHER_HOLOGRAMME = re.compile(r"^(?:(?:hey |ok )?jarvis[,.!]?\s*)?(?:cache|enleve|retire|range|ferme|efface)\s+"
+                                r"(?:l'|l\s+|le\s+|cet\s+|ton\s+)?hologramme[\s.!?]*$")
 _SENTINELLE = re.compile(r"\b(desactive|coupe|arrete|eteins|active|allume|reactive|remets?)\s+(?:la\s+)?sentinelle\b")
 _OUI = re.compile(r"^(?:jarvis[,.]?\s*)?(oui|ouais|yes|vas[- ]y|confirme|je confirme|c'?est bon|fais[- ]le|d'?accord|ok)\b.{0,30}$")
 _NON = re.compile(r"^(?:jarvis[,.]?\s*)?(non|no|laisse tomber|annule|surtout pas|pas du tout|n'?en fais rien)\b.{0,30}$")
@@ -102,6 +161,37 @@ def analyser(texte: str, confirmation_en_attente: bool = False) -> tuple[str | N
     if m and len(n) <= 80:
         nom = next(g for g in m.groups() if g)
         return "personnalite", {"sarcasme": "sarcastique"}.get(nom, nom)
+    m = _ARMURE.match(n)
+    if m and len(n) <= 70:
+        from .armures import nom_depuis
+        nom = nom_depuis(m.group(1))
+        if nom:
+            return "armure", nom
+    if _SANS_ARMURE.match(n):
+        return "armure", "jarvis"
+    m = _GLOBE.match(n)
+    if m:
+        return "globe", "terre" if m.group("terre") else "station" if m.group("station") else "seismes"
+    m = _PLACE.match(n)
+    if m:
+        return "superposition_place", {"centre": "milieu"}.get(m.group("coin"), m.group("coin"))
+    m = _LIVE.match(n)
+    if m:
+        return "live", ("on:" + (m.group("lien") or "")) if m.group("on") else "off"
+    m = _SUPERPOSITION.match(n)
+    if m:
+        return "superposition", "on" if m.group("on") else "off"
+    if _SCAN.match(n):
+        return "scan", ""
+    m = _GESTES.match(n)
+    if m:
+        return "gestes", "off" if m.group("verbe")[:3] in ("des", "cou", "ete", "arr") else "on"
+    if _CACHER_HOLOGRAMME.match(n):
+        return "hologramme_cacher", ""
+    if _VISAGE.match(n):
+        return "visage", "on"
+    if _SANS_VISAGE.match(n):
+        return "visage", "off"
     m = _SENTINELLE.search(n)
     if m and len(n) <= 60:
         return "sentinelle", "off" if m.group(1) in ("desactive", "coupe", "arrete", "eteins") else "on"

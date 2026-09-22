@@ -72,9 +72,9 @@ const RENDUS = {
       const pts = e.courbe.map((v, i) => `${(i / (n - 1) * L).toFixed(1)},${(H - v / max * (H - 8) - 4).toFixed(1)}`).join(" ");
       const fig = el("figure", "h-courbe h-apparait"); fig.style.animationDelay = (200 + (e.jauges || []).length * 70) + "ms";
       fig.innerHTML = `<svg viewBox="0 0 ${L} ${H}" preserveAspectRatio="none">
-          <defs><linearGradient id="hc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5fe3ff" stop-opacity=".35"/><stop offset="1" stop-color="#5fe3ff" stop-opacity="0"/></linearGradient></defs>
+          <defs><linearGradient id="hc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color: var(--cyan)" stop-opacity=".35"/><stop offset="1" style="stop-color: var(--cyan)" stop-opacity="0"/></linearGradient></defs>
           <polygon class="aire" points="0,${H} ${pts} ${L},${H}" fill="url(#hc)"/>
-          <polyline class="trait" pathLength="1" points="${pts}" fill="none" stroke="#5fe3ff" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
+          <polyline class="trait" pathLength="1" points="${pts}" fill="none" style="stroke: var(--cyan)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
       fig.appendChild(el("figcaption", "", e.legende_courbe || ""));
       bloc.appendChild(fig);
     }
@@ -132,6 +132,67 @@ const RENDUS = {
       setTimeout(() => { barre.style.transform = `scaleX(${Math.max(0, x.valeur) / max})`; }, 260 + i * 60);
     });
     corps.appendChild(bloc);
+  },
+
+  // la vidéo tournée par Jarvis (consigne 8) : d'abord une barre de progression, puis le film en boucle
+  video(corps, e) {
+    const cadre = el("div", "h-video");
+    const barre = el("div", "h-progression");
+    const jauge = el("span", "h-avance");
+    const texte = el("span", "h-etape", e.etape || "préparation");
+    barre.append(jauge, texte);
+    cadre.appendChild(barre);
+    const film = el("video");
+    film.muted = true; film.loop = true; film.autoplay = true; film.playsInline = true;
+    film.style.display = "none";
+    cadre.appendChild(film);
+    corps.appendChild(cadre);
+    // le panneau se met à jour tout seul quand l'avancement ou la vidéo arrivent
+    cadre.majVideo = d => {
+      if (d.pourcent !== undefined) {
+        jauge.style.width = Math.max(2, Math.min(100, d.pourcent)) + "%";
+        texte.textContent = (d.etape || "image ") + (d.pourcent !== undefined ? ` ${Math.round(d.pourcent)} %` : "");
+      }
+      if (d.url) {
+        film.src = d.url;
+        film.style.display = "";
+        barre.classList.add("finie");
+        texte.textContent = d.duree ? `${d.duree} s · ${d.calcul || "?"} s de calcul` : "prête";
+        film.play().catch(() => {});
+      }
+    };
+    if (e.url) cadre.majVideo(e);
+    else if (e.pourcent !== undefined) cadre.majVideo(e);
+  },
+
+  // le tchat du direct (mode live) : les messages défilent, et ce que Jarvis répond est mis en avant
+  tchat(corps, e) {
+    const bloc = el("div", "h-tchat");
+    const fil = el("div", "h-tchat-fil");
+    const pied = el("div", "h-tchat-pied");
+    const compteur = el("span", "h-tchat-compte", "en attente du tchat…");
+    pied.appendChild(compteur);
+    bloc.append(fil, pied);
+    corps.appendChild(bloc);
+    const MAX = 40;                       // au-delà, les plus vieux sortent : un direct dure des heures
+    bloc.majTchat = d => {
+      if (d.ligne) {
+        const l = el("div", "h-tchat-ligne " + (d.ligne.genre || "message"));
+        if (d.ligne.auteur) l.appendChild(el("span", "h-tchat-qui", d.ligne.auteur));
+        l.appendChild(el("span", "h-tchat-texte", d.ligne.texte || ""));
+        fil.appendChild(l);
+        while (fil.children.length > MAX) fil.removeChild(fil.firstChild);
+        fil.scrollTop = fil.scrollHeight;
+      }
+      if (d.compte) {
+        const c = d.compte;
+        compteur.textContent = `${c.messages || 0} messages · ${c.reponses || 0} réponses · `
+          + `${c.accueils || 0} accueils · ${c.spectateurs_connus || 0} personnes`;
+      }
+      if (d.fini) bloc.classList.add("fini");
+    };
+    if (e.lignes) e.lignes.forEach(ligne => bloc.majTchat({ ligne }));
+    if (e.compte) bloc.majTchat({ compte: e.compte });
   },
 
   images(corps, e, outils) {
@@ -338,6 +399,8 @@ export function creerPanneaux(zone, options = {}) {
   const ouverts = [];
 
   function notifier() { options.surChangement && options.surChangement(ouverts.length, zone.classList.contains("large")); }
+  // mode vidéo : un seul panneau à la fois (options.maxPetits le dit), sinon trois
+  const maxPetits = () => (options.maxPetits ? options.maxPetits() : MAX_PETITS);
 
   function fermer(p, silencieux) {
     if (!p || p.classList.contains("ferme")) return;
@@ -359,7 +422,7 @@ export function creerPanneaux(zone, options = {}) {
     if (grand) ouverts.slice().forEach(p => fermer(p, true));
     else {
       ouverts.filter(p => p.classList.contains("grand")).forEach(p => fermer(p, true));
-      while (ouverts.length >= MAX_PETITS) fermer(ouverts[0], true);
+      while (ouverts.length >= maxPetits()) fermer(ouverts[0], true);
     }
     zone.classList.toggle("large", grand);
 
@@ -369,7 +432,8 @@ export function creerPanneaux(zone, options = {}) {
     const tete = el("header");
     tete.append(el("span", "h-index", String(compteur).padStart(2, "0")), el("h3", "", e.titre || genre),
                 el("span", "h-genre", { texte: "texte", liste: "liste", graphique: "données", images: "images", frise: "frise",
-                  recherche: "recherche", page: "page", formulaire: "réglages", constellation: "mémoire", nuage: "vidéos", barres: "données" }[genre]));
+                  recherche: "recherche", page: "page", formulaire: "réglages", constellation: "mémoire", nuage: "vidéos",
+                  barres: "données", video: "vidéo" }[genre]));
     if (e.retour) { const b = el("button", "", "retour"); b.onclick = () => ouvrir(e.retour); tete.appendChild(b); }
     const externe = e.externe || (genre === "page" ? e.url : "");
     if (externe) { const b = el("button", "", "navigateur"); b.onclick = () => window.open(externe, "_blank"); tete.appendChild(b); }
@@ -385,6 +449,7 @@ export function creerPanneaux(zone, options = {}) {
 
     ouverts.push(p);
     notifier();
+    options.surOuverture && options.surOuverture(genre);
     return p;
   }
 
@@ -392,6 +457,8 @@ export function creerPanneaux(zone, options = {}) {
     ouvrir, fermer,
     fermerTout() { ouverts.slice().forEach(p => fermer(p, true)); notifier(); },
     rouvrir() { if (dernierFerme) ouvrir(dernierFerme); },
+    // ne garde que les `n` plus récents (passage en mode vidéo)
+    limiter(n) { while (ouverts.length > n) fermer(ouverts[0], true); notifier(); },
     get nombre() { return ouverts.length; },
     // un panneau de ce genre encore ouvert (pour l'allumer ou le rafraîchir sans en ouvrir un second)
     ouvertDeGenre(genre) { return ouverts.find(p => p.classList.contains("genre-" + genre) && !p.classList.contains("ferme")) || null; },

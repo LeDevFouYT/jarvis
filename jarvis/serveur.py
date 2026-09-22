@@ -35,6 +35,7 @@ from . import cerveau as module_cerveau
 from . import (commandes, compteur, confirmations, memoire, oreilles, outils, personnalites, reglages, sentinelle,
                telegram_entrant, voix)
 from . import langue as module_langue
+from . import armures, majordome
 from .cerveau import CERVEAU, MODE, MODELE
 from .config import CONFIG, RACINE
 from .outils import etat_machine, ranger, rappel, telegram
@@ -238,9 +239,22 @@ def _prechauffer():
             memoire.thematiser_manquants()
         memoire.pertinents("bonjour")                 # calcule les vecteurs manquants et charge le modèle de plongements
 
+    def majordome_apres_le_cerveau():
+        # la voix du majordome (2 Go sur la carte) seulement une fois le cerveau et Whisper en place : chargée avant,
+        # elle ferait manquer de place à Ollama, qui mettrait une partie du cerveau sur le processeur
+        fin = time.time() + 300
+        while time.time() < fin and not (DEMARRAGE.get("cerveau") and DEMARRAGE.get("whisper")) and not DEMARRAGE["erreurs"]:
+            time.sleep(0.5)
+        if CONFIG["voix"].get("moteur") == "majordome":
+            majordome.suivre_moteur("majordome")
+
     for nom, fonction in (("cerveau", CERVEAU.charger), ("whisper", oreilles.prechauffer_whisper),
                           ("voix", voix.prechauffer), ("memoire", memoire_prete)):
         threading.Thread(target=brique, args=(nom, fonction), daemon=True).start()
+    threading.Thread(target=majordome_apres_le_cerveau, daemon=True, name="majordome").start()
+    from . import superposition_pilote
+    threading.Thread(target=superposition_pilote.au_demarrage, daemon=True, name="superposition").start()
+    threading.Thread(target=_presence_perimee, daemon=True, name="presence").start()
     outils.demarrer_taches_de_fond()
     threading.Thread(target=_gardien_de_session, daemon=True, name="gardien-session").start()
 
@@ -360,6 +374,9 @@ async def cycle_de_vie(app):
 app = FastAPI(title="Jarvis", lifespan=cycle_de_vie)
 WORKSPACE.mkdir(exist_ok=True)
 app.mount("/workspace", StaticFiles(directory=str(WORKSPACE)), name="workspace")
+_MEDIAPIPE = RACINE / "modeles" / "mediapipe"          # le modèle des mains, servi au HUD (rien d'autre du dossier)
+if _MEDIAPIPE.exists():
+    app.mount("/modeles/mediapipe", StaticFiles(directory=str(_MEDIAPIPE)), name="mediapipe")
 
 
 # le HUD : scripts en modules ES et three.js copié dans hud/vendor (aucun chargement Internet)
@@ -388,6 +405,18 @@ def page():
     return FileResponse(HUD, headers={"Cache-Control": "no-cache"})
 
 
+@app.get("/fond")
+def fond():
+    """Le mode fond d'écran (Lively Wallpaper) : le réacteur seul, qui réagit à la voix."""
+    return FileResponse(HUD.parent / "fond.html", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/live")
+def hud_live():
+    """Le HUD du direct : la page que le spectateur voit (source navigateur d'OBS, 1920 × 1080)."""
+    return FileResponse(HUD.parent / "live.html", headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/etat")
 @app.get("/api/etat")
 def etat():
@@ -395,9 +424,11 @@ def etat():
     return {"modele": MODELE, "cerveau": {"mode": MODE, "modele": MODELE, "distant": MODE == "cloud"},
             "charges": CERVEAU.modeles_charges(), "pret": DEMARRAGE,
             "micro": OREILLES.etat if OREILLES else "inactif", "parle": voix.VOIX.parle(), "silence": voix.VOIX.muet,
-            "voix": {"moteur": CONFIG["voix"]["moteur"], "elevenlabs": voix.elevenlabs_configure()},
+            "voix": {"moteur": CONFIG["voix"]["moteur"], "elevenlabs": voix.elevenlabs_configure(),
+                     "majordome": majordome.MAJORDOME.actif},
+            "superposition": __import__("jarvis.superposition_pilote", fromlist=["x"]).actif(),
             "titre": module_cerveau.TITRE, "souvenirs": memoire.nombre(), "solde": CERVEAU.solde_cloud(),
-            "personnalite": personnalites.actuelle(), "latence": DERNIERE_LATENCE or None,
+            "personnalite": personnalites.actuelle(), "theme": armures.actuelle(), "latence": DERNIERE_LATENCE or None,
             "conversation_continue": CONFIG["oreilles"].get("conversation_continue", {}),
             "interruption": {**CONFIG["oreilles"].get("interruption", {}),
                              "coupee": bool(OREILLES and OREILLES.interruption_coupee)},
@@ -540,6 +571,69 @@ def _a_la_troisieme_personne(fait: str) -> str:
     return f[:1].upper() + f[1:]
 
 
+DIRECT = None                      # le mode live en cours (jarvis/live.py), ou None
+
+
+def _live(argument: str, texte: str, t0, source, langue, mode, titre: str):
+    """« on est en live » / « coupe le live ». Le tchat n'a droit qu'à des mots : voir jarvis/live.py."""
+    global DIRECT
+    from . import live
+    if argument == "off":
+        if DIRECT and DIRECT.actif():
+            compte = DIRECT.compte()
+            DIRECT.arreter()
+            DIRECT = None
+            reponse = (f"Fin du direct, {titre}. J'ai répondu à {compte['reponses']} message(s) et accueilli "
+                       f"{compte['accueils']} personne(s).")
+        else:
+            reponse = f"Le mode live n'était pas allumé, {titre}."
+        return _dire_reponse(texte, reponse, t0, source, langue, mode, "live")
+    manque = live.cle_manquante()
+    if manque:
+        return _dire_reponse(texte, f"Je ne peux pas, {titre} : {manque}", t0, source, langue, mode, "live")
+    lien = argument[3:] or CONFIG.get("live", {}).get("video", "")
+    if not lien:
+        # pas de lien : on cherche le direct en cours sur la chaîne réglée (« on est en live » suffit)
+        try:
+            lien = live.trouver_direct()
+        except Exception as e:
+            return _dire_reponse(texte, f"Je ne trouve pas votre direct, {titre} : {e}",
+                                 t0, source, langue, mode, "live")
+        if not lien:
+            return _dire_reponse(texte, f"Votre chaîne n'est pas en direct, {titre}. Lancez le direct, ou "
+                                 f"donnez-moi son lien.", t0, source, langue, mode, "live")
+    if DIRECT and DIRECT.actif():
+        return _dire_reponse(texte, f"J'anime déjà le direct, {titre}.", t0, source, langue, mode, "live")
+    def dire(phrase: str):
+        voix.VOIX.dire(phrase)
+        EMETTEUR.emettre({"type": "reponse", "t": time.time(), "texte": phrase, "source": "live"})
+    def dessiner_pour_le_tchat(prompt: str):
+        """La seule chose que le tchat peut déclencher : une image. La carte est prise le temps du dessin,
+        le cerveau la rend et revient après — même alternance que pour les hologrammes et les vidéos."""
+        from .outils import generer_image
+        from . import carte
+        with carte.Occupation("image du tchat"):
+            CERVEAU.decharger()
+            generer_image.liberer_avant()
+            return generer_image.dessiner(prompt, "paysage")
+
+    DIRECT = live.Direct(lien, dire=dire, generer=CERVEAU.generer, emettre=EMETTEUR.emettre,
+                         dessiner=dessiner_pour_le_tchat,
+                         # « le streamer a la parole » : Jarvis parle, ou les oreilles sont en train de
+                         # l'écouter ou de transcrire ce qu'il vient de dire
+                         streamer_parle=lambda: voix.VOIX.parle() or bool(
+                             OREILLES and OREILLES.etat in ("ecoute", "transcription")),
+                         nom_streamer=CONFIG.get("maison", {}).get("nom", "") or titre)
+    try:
+        infos = DIRECT.demarrer()
+    except Exception as e:
+        DIRECT = None
+        return _dire_reponse(texte, f"Je n'arrive pas à ouvrir le tchat : {e}", t0, source, langue, mode, "live")
+    return _dire_reponse(texte, f"J'anime le direct « {infos['titre'][:60]} », {titre}. Je lis le tchat, "
+                         f"j'accueille les arrivées, et je réponds quand on m'appelle.",
+                         t0, source, langue, mode, "live")
+
+
 def _commande(commande: str, argument, texte: str, t0: float, source: str, langue: str, mode) -> dict:
     tu = _tutoie()
     titre = module_cerveau.TITRE
@@ -595,6 +689,41 @@ def _commande(commande: str, argument, texte: str, t0: float, source: str, langu
         EMETTEUR.emettre({"type": "personnalite", "t": time.time(), "nom": argument})
         threading.Thread(target=CERVEAU.rechauffer, daemon=True).start()
         return _dire_reponse(texte, personnalites.PERSONNALITES[argument]["accuse"].format(titre=titre), t0, source, langue, mode, commande)
+    if commande == "armure":
+        armures.definir(argument)
+        EMETTEUR.emettre({"type": "theme", "t": time.time(), "theme": argument})
+        return _dire_reponse(texte, armures.phrase(argument, titre), t0, source, langue, mode, commande)
+    if commande == "globe":
+        from .outils import globe as outil_globe
+        return _dire_reponse(texte, outil_globe.executer(argument), t0, source, langue, mode, commande)
+    if commande == "superposition_place":
+        EMETTEUR.emettre({"type": "superposition_place", "t": time.time(), "coin": argument})
+        return _dire_reponse(texte, f"Je me mets à {argument}, {titre}.", t0, source, langue, mode, commande)
+    if commande == "superposition":
+        actif = argument == "on"
+        from . import superposition_pilote
+        ok, detail = superposition_pilote.definir(actif)
+        return _dire_reponse(texte, (f"Je me pose par-dessus Windows, {titre}." if ok else f"Je n'y arrive pas : {detail}")
+                             if actif else f"Je rentre dans l'interface, {titre}.", t0, source, langue, mode, commande)
+    if commande == "live":
+        return _live(argument, texte, t0, source, langue, mode, titre)
+    if commande == "scan":
+        EMETTEUR.emettre({"type": "scan", "t": time.time(), "actif": True})
+        return _dire_reponse(texte, "Je scanne la pièce, {titre}. La caméra ne reste allumée que le temps du balayage, "
+                             "et rien n'est enregistré.".format(titre=titre), t0, source, langue, mode, commande)
+    if commande == "gestes":
+        actif = argument == "on"
+        EMETTEUR.emettre({"type": "gestes", "t": time.time(), "actif": actif})
+        return _dire_reponse(texte, "J'allume la caméra pour les gestes. Rien n'est enregistré." if actif
+                             else "Caméra éteinte, {titre}.".format(titre=titre), t0, source, langue, mode, commande)
+    if commande == "hologramme_cacher":
+        EMETTEUR.emettre({"type": "hologramme_cacher", "t": time.time()})
+        return _dire_reponse(texte, "C'est retiré, {titre}.".format(titre=titre), t0, source, langue, mode, commande)
+    if commande == "visage":
+        actif = argument == "on"
+        EMETTEUR.emettre({"type": "visage", "t": time.time(), "actif": actif})
+        return _dire_reponse(texte, f"Me voici, {titre}." if actif else f"Je retourne dans le réacteur, {titre}.",
+                             t0, source, langue, mode, commande)
     if commande == "sentinelle":
         actif = argument == "on"
         sentinelle.definir_actif(actif)
@@ -828,6 +957,48 @@ def souvenirs_oublier(identifiant: str):
 @app.get("/reglages")
 def reglages_lire():
     return reglages.lire()
+
+
+class Presence(BaseModel):
+    actif: bool = False
+
+
+_HUD_PRESENT = {"actif": False, "t": 0.0}
+
+
+def _presence_perimee():
+    """Un HUD fermé brutalement ne dit pas qu'il part : sans battement pendant 20 s, on le considère absent."""
+    while not EXTINCTION.is_set():
+        time.sleep(5)
+        if _HUD_PRESENT["actif"] and time.time() - _HUD_PRESENT["t"] > 20:
+            _HUD_PRESENT["actif"] = False
+            EMETTEUR.emettre({"type": "hud_present", "t": time.time(), "actif": False})
+
+
+@app.post("/presence")
+def hud_present(p: Presence):
+    """Le HUD dit quand il est au premier plan : la superposition s'efface alors (rien ne se recouvre)."""
+    change = p.actif != _HUD_PRESENT["actif"]
+    _HUD_PRESENT.update(actif=p.actif, t=time.time())
+    if change:
+        EMETTEUR.emettre({"type": "hud_present", "t": time.time(), "actif": p.actif})
+    return {"ok": True}
+
+
+class ResultatScan(BaseModel):
+    phrase: str = ""
+    objets: list = []
+
+
+@app.post("/scan/resultat")
+def scan_resultat(r: ResultatScan):
+    """Le HUD renvoie ce que le scan a reconnu (des NOMS, jamais d'image) : Jarvis le dit et l'affiche."""
+    phrase = (r.phrase or "").strip()
+    dit = f"Je vois {phrase}, {module_cerveau.TITRE}." if phrase else "Je ne reconnais rien de familier dans la pièce."
+    EMETTEUR.emettre({"type": "scan_resultat", "t": time.time(), "phrase": phrase, "objets": r.objets[:20]})
+    voix.VOIX.dire(dit)
+    JOURNAL_DIALOGUE.info("scan : %d objet(s) : %s", len(r.objets), phrase or "rien")
+    return {"ok": True, "dit": dit}
 
 
 @app.post("/reglages")

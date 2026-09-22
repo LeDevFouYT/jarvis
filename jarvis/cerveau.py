@@ -215,8 +215,12 @@ class Cerveau:
         return {"num_ctx": CONFIG["cerveau"].get("num_ctx", 8192), "temperature": CONFIG["cerveau"].get("temperature", 0.3)}
 
     def charger(self) -> float:
-        """Charge le modèle en VRAM et remplit le cache d'Ollama avec la consigne. Retourne la durée. Rien en mode cloud."""
+        """Charge le modèle en VRAM et remplit le cache d'Ollama avec la consigne. Retourne la durée. Rien en mode cloud.
+        Rien non plus si un travail lourd tient la carte (image, hologramme, vidéo) : il la rendra, le cerveau reviendra."""
+        from . import carte
         if MODE == "cloud":
+            return 0.0
+        if carte.occupee():                    # un rendu tient la carte : il la rendra, on reviendra après
             return 0.0
         t = time.time()
         # Même num_ctx que les vrais appels, sinon Ollama recharge le modèle au premier message.
@@ -228,8 +232,10 @@ class Cerveau:
 
     def rechauffer(self) -> float:
         """Un appel d'un seul jeton avec la vraie consigne et les vrais outils : Ollama garde ce préfixe en cache,
-        la prochaine question ne paie plus que ses propres jetons. À rappeler après un appel annexe au modèle."""
-        if MODE == "cloud":
+        la prochaine question ne paie plus que ses propres jetons. À rappeler après un appel annexe au modèle.
+        Sauté si un travail lourd tient la carte : c'est ce réchauffage qui ramenait le cerveau pendant un rendu."""
+        from . import carte
+        if MODE == "cloud" or carte.occupee():
             return 0.0
         t = time.time()
         try:
