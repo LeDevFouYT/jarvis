@@ -11,7 +11,7 @@ votre version doit être publiée sous la même licence. Le code est ici même (
 Pour l'intégrer à un produit **sans publier votre code**, ou pour le revendre, il existe une licence commerciale :
 voir [LICENCE-COMMERCIALE.md](LICENCE-COMMERCIALE.md). Les versions jusqu'à v1.0.18 comprises étaient sous MIT et le restent.
 
-Tout est gratuit. Un service en ligne payant a existé pour les machines sans carte graphique suffisante (le cerveau tournait alors sur une autre machine) : il est **suspendu pour le moment**, le temps de le rendre disponible en permanence. Le code de la passerelle reste dans le dépôt pour qui veut monter la sienne.
+Tout est gratuit. Un service en ligne payant existait pour les machines sans carte graphique suffisante (le cerveau tournait alors sur une autre machine) : **il est retiré pour le moment**. La raison est simple : Jarvis est modifié tous les jours, parfois en direct pendant le tournage des vidéos de la chaîne. Je ne peux pas garantir qu'un service payant réponde correctement pendant que l'application change sous les pieds de ceux qui s'en servent, et personne ne doit payer pour tomber sur une version en travaux. Il reviendra quand l'application sera stable et le serveur permanent. Le code de la passerelle reste dans le dépôt pour qui veut monter la sienne.
 
 ## Ce qu'il faut
 
