@@ -57,22 +57,22 @@ Exemples : « cherche des phares bretons sur Internet » (les résultats s'affic
 ## Le mode live : Jarvis anime votre direct
 
 Il lit le tchat de votre direct YouTube, répond quand on l'appelle, accueille les arrivées, et relance la
-conversation de temps en temps — à voix haute, comme un co-animateur.
+conversation de temps en temps, à voix haute, comme un co-animateur.
 
 **Ce qu'il faut, une fois pour toutes :**
 
 1. **Une clé YouTube** (gratuite). Ouvrez Réglages › YouTube : les trois boutons vous emmènent au bon endroit
    dans la console Google (créer un projet, activer l'API YouTube Data, créer une clé), vous collez la clé dans
-   le champ, et « tester la clé » vous dit tout de suite si elle marche. C'est elle qui lit le tchat — sans elle,
+   le champ, et « tester la clé » vous dit tout de suite si elle marche. C'est elle qui lit le tchat ; sans elle,
    Jarvis vous le dira au lieu de démarrer.
 2. **Que vos spectateurs entendent Jarvis.** Il parle par la sortie audio de votre PC : dans OBS, ajoutez une
    source **« Capture audio du bureau »** (ou réglez la sortie de Jarvis sur un câble virtuel type VB-Cable et
-   ajoutez-le comme source). Sans ça, vous l'entendez, le direct non — c'est l'erreur classique.
+   ajoutez-le comme source). Sans ça, vous l'entendez, le direct non : c'est l'erreur classique.
 3. **Un casque**, comme d'habitude : sinon Jarvis s'entend parler et se coupe lui-même.
 
-**Pendant le direct :** « **Jarvis, on est en live** » — c'est tout. Il cherche le direct en cours sur la chaîne
+**Pendant le direct :** « **Jarvis, on est en live** », c'est tout. Il cherche le direct en cours sur la chaîne
 réglée dans Réglages › YouTube › Ma chaîne. Vous pouvez aussi donner le lien (« anime le direct https://… »), ce
-qui coûte moins de quota, ou le fixer une fois dans `config.json` → `live.video`. Puis « **coupe le live** » à la fin — il dit alors combien de messages il a traités
+qui coûte moins de quota, ou le fixer une fois dans `config.json` → `live.video`. Puis « **coupe le live** » à la fin : il dit alors combien de messages il a traités
 et combien de personnes il a accueillies. Le tchat défile dans un panneau du HUD : ses réponses y sont barrées
 de cyan, les arrivées en clair, et le pied compte messages, réponses, accueils et personnes.
 
@@ -98,8 +98,8 @@ tenable : une demande par personne toutes les cinq minutes, quatre-vingt-dix sec
 carte ne fait qu'une chose à la fois), et trois demandes en file au maximum.
 
 **Ce qui est interdit ne passe pas.** Deux filtres avant de dessiner : une liste de mots qui bloque l'évidence
-sans même consulter le modèle, puis un juge local qui relit la demande avec les règles de la communauté YouTube
-— nudité, violence, haine et harcèlement, personnes réelles nommées, enfants, drogues et armes, automutilation,
+sans même consulter le modèle, puis un juge local qui relit la demande avec les règles de la communauté YouTube :
+nudité, violence, haine et harcèlement, personnes réelles nommées, enfants, drogues et armes, automutilation,
 symboles extrémistes, désinformation, marques et personnages sous droits, texte à écrire dans l'image. Dans le
 doute, il refuse : une image refusée coûte une phrase, une image de trop peut coûter la chaîne. Et la demande du
 spectateur n'est jamais envoyée telle quelle au générateur : elle est réécrite en description d'image.
@@ -107,7 +107,7 @@ spectateur n'est jamais envoyée telle quelle au générateur : elle est réécr
 **Le HUD du direct** (ce que voit le public) : dans OBS, ajoutez une **source navigateur** sur
 `http://127.0.0.1:8765/live`, en 1920 × 1080. On y voit le réacteur qui suit la voix, le tchat avec les réponses
 de Jarvis mises en avant, le dernier dessin demandé (avec le pseudo de son auteur), et un bandeau qui compte
-messages, réponses, bienvenues, dessins — et les sorties Internet, la preuve à l'image que tout le reste tourne
+messages, réponses, bienvenues, dessins, et les sorties Internet, la preuve à l'image que tout le reste tourne
 sur votre machine. Options d'URL : `?fond=transparent` pour poser le HUD par-dessus un jeu, `?cote=gauche` pour
 inverser la mise en page, `?reacteur=0` si vous êtes déjà à l'image.
 
@@ -128,7 +128,7 @@ Réglages › Telegram guide en quatre étapes : créer le bot avec @BotFather, 
 - La vérification des chiffres YouTube dit si un chiffre ou une phrase est faux ; elle ne corrige pas la réponse déjà dite.
 - Le mot de réveil est fragile avec de la musique ou une télévision en fond. Le modèle attend « Hey Jarvis » en anglais ; « Jarvis » seul n'est pas garanti. Seuil réglable dans `oreilles.seuil`.
 - Whisper invente parfois une phrase sur un souffle ; les classiques sont filtrés par une liste, pas tous.
-- Le mode cloud demande la passerelle (dossier `passerelle/`) déployée sur un serveur : le client paie des minutes de calcul, et tout ce qui a besoin d'une carte graphique passe par là — le cerveau, la vision, les images, mais aussi les vidéos, les sculptures 3D et les miniatures. L'écoute et la voix restent sur sa machine. Ce qui traverse n'est qu'une description : la machine qui calcule n'exécute jamais d'ordre venu d'un client.
+- Le mode cloud demande la passerelle (dossier `passerelle/`) déployée sur un serveur : le client paie des minutes de calcul, et tout ce qui a besoin d'une carte graphique passe par là : le cerveau, la vision, les images, mais aussi les vidéos, les sculptures 3D et les miniatures. L'écoute et la voix restent sur sa machine. Ce qui traverse n'est qu'une description : la machine qui calcule n'exécute jamais d'ordre venu d'un client.
 
 ## Être à 100 % local
 
