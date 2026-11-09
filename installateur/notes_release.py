@@ -58,9 +58,16 @@ def notes(version: str) -> str:
     else:
         titre = subprocess.run(["git", "log", "-1", "--pretty=%s"], cwd=RACINE, capture_output=True, text=True, encoding="utf-8").stdout
         corps = f"## Jarvis {version}\n\n🔧 {nettoyer(titre)}"
+    # l'empreinte du fichier réellement publié (09/11 : v1.0.35 affichait celle de l'installateur figé alors qu'un
+    # nouvel installateur venait d'être construit ; « Get-FileHash » ne donnait pas la même)
+    import hashlib
     import json
+    exe = RACINE / "installateur" / "dist" / "Jarvis-Installateur.exe"
     fige = RACINE / "installateur" / "installateur_fige.json"
-    sha = json.loads(fige.read_text(encoding="utf-8")).get("sha256", "?") if fige.exists() else "?"
+    if exe.exists():
+        sha = hashlib.sha256(exe.read_bytes()).hexdigest()
+    else:
+        sha = json.loads(fige.read_text(encoding="utf-8")).get("sha256", "?") if fige.exists() else "?"
     return corps + "\n" + PIED.format(sha256=sha)
 
 
