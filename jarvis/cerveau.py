@@ -17,6 +17,7 @@ from datetime import datetime
 import requests
 
 from . import compteur, confirmations, memoire, outils, personnalites
+from . import prenom as module_prenom
 from .config import CONFIG, SECRETS
 
 MODE = CONFIG["cerveau"].get("mode", "local")            # local : Ollama sur ce PC ; cloud : URL distante compatible Ollama
@@ -34,7 +35,8 @@ MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août
 
 # Les règles : communes à toutes les personnalités. Seul le ton (personnalites.py) change.
 _REGLES = (
-    "Vous êtes Jarvis, l'assistant personnel de {titre}, un assistant vocal qui vit sur son ordinateur. "
+    "Vous êtes {prenom}, l'assistant personnel de {titre}, un assistant vocal qui vit sur son ordinateur. "
+    "Votre prénom est {prenom} : c'est le seul nom que vous vous donnez. "
     "{ton} "
     "Vos réponses sont dites à l'oral : une à trois phrases, jamais plus. Commencez par une phrase très courte, "
     "quelques mots, qui répond déjà ; la suite vient après. Répondez uniquement à ce qui est demandé : pour "
@@ -49,6 +51,12 @@ _REGLES = (
     "téléphone -> telegram ; mémoire vidéo, VRAM, processeur, disques, température -> etat_machine ; "
     "chercher des fichiers -> chercher_fichiers ; ouvrir un programme (bloc-notes, navigateur…) -> ouvrir_application ; "
     "ouvrir un fichier, un document, des notes ou un dossier précis (sur le bureau, dans Documents…) -> ouvrir_fichier ; "
+    "cours, prix ou variation d'une cryptomonnaie (bitcoin, ethereum, solana…), ce qui monte, le point crypto -> crypto ; "
+    "bourse, indices (CAC 40, S&P 500…), actions (Apple, LVMH…), or, pétrole, devises, comment vont les marchés -> bourse ; "
+    "portefeuille fictif, acheter ou vendre une crypto ou une action (argent fictif) -> portefeuille ; rejouer les 10 derniers jours "
+    "de trading -> replay_crypto ; prévenir quand une crypto passe un seuil -> alerte_crypto. Sur les cryptos et la "
+    "finance, des faits seulement : ne dites jamais d'acheter, de vendre ou d'investir, et rappelez que vous n'êtes pas "
+    "conseiller en investissement si on vous demande quoi faire. "
     "chercher sur Internet, une information récente, l'actualité, un prix, la météo, une vidéo -> chercher_web "
     "(sur = youtube pour une vidéo), les résultats s'affichent dans l'interface et vous en lisez deux ou trois ; "
     "ouvrir un site précis -> ouvrir_site ; volume, son, capture d'écran, verrouiller -> systeme ; "
@@ -75,7 +83,8 @@ def date_du_jour() -> str:
 def personnage(nom: str | None = None) -> str:
     """La consigne complète : stable toute la journée tant que la personnalité ne change pas."""
     p = personnalites.PERSONNALITES[nom or personnalites.actuelle()]
-    return _REGLES.format(titre=TITRE, ton=p["ton"].format(titre=TITRE), date=date_du_jour(), rappel=p["rappel"])
+    return _REGLES.format(titre=TITRE, prenom=module_prenom.actuel(), ton=p["ton"].format(titre=TITRE),
+                          date=date_du_jour(), rappel=p["rappel"])
 
 
 _TITRE_RE = re.compile(r"\s*,?\s*\b(monsieur|madame)\b\s*,?\s*", re.IGNORECASE)
@@ -476,19 +485,23 @@ class Cerveau:
             self.historique.append({"role": "assistant", "content": reponse})
             self.dernier_echange = time.time()
 
-    def generer(self, consigne: str, texte: str, delai: float = 60, format: dict | None = None) -> str:
+    def generer(self, consigne: str, texte: str, delai: float = 60, format: dict | None = None,
+                temperature: float = 0.3, rechauffer: bool = True) -> str:
         """Un appel simple, sans outils ni historique (résumé, reformulation). Le cache est réchauffé après.
-        `format` : un schéma JSON (sortie structurée d'Ollama). Même num_ctx que le dialogue : sinon Ollama recharge."""
+        `format` : un schéma JSON (sortie structurée d'Ollama). Même num_ctx que le dialogue : sinon Ollama recharge.
+        `rechauffer=False` : une série d'appels (le replay crypto, 60 décisions) réchauffe une seule fois, à la fin."""
         corps = {"model": MODELE, "stream": False, "think": False, "keep_alive": KEEP_ALIVE,
                  "messages": [{"role": "system", "content": consigne}, {"role": "user", "content": texte}],
-                 "options": {"num_ctx": CONFIG["cerveau"].get("num_ctx", 8192), "temperature": 0.3}}
+                 "options": {"num_ctx": CONFIG["cerveau"].get("num_ctx", 8192), "temperature": temperature}}
         if format:
             corps["format"] = format
             corps["options"]["num_predict"] = 2000      # un JSON qui boucle ne remplit pas tout le contexte
         r = requests.post(f"{OLLAMA}/api/chat", json=corps, headers=ENTETES, timeout=delai)
         r.raise_for_status()
         resultat = r.json()["message"]["content"].strip()
-        threading.Thread(target=self.rechauffer, daemon=True).start()
+        self.derniere_generation = r.json()
+        if rechauffer:
+            threading.Thread(target=self.rechauffer, daemon=True).start()
         return resultat
 
     def fin_de_session(self, historique: list[dict] | None = None) -> dict:

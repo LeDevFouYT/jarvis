@@ -2,12 +2,38 @@
 // Un événement {type: "panneau", genre, titre, ...} (jarvis/outils/panneaux.py) ouvre un panneau qui se déplie
 // avec un léger scintillement, puis anime son contenu selon le genre :
 //   texte · liste · graphique · images · frise · recherche · page (et « formulaire », utilisé par les réglages).
-// Petits panneaux : empilés à droite du réacteur, trois au plus. Grands (page, formulaire) : seuls, plus larges.
+// Petits panneaux : empilés à droite du réacteur, trois au plus. Grands (page, formulaire, cours, replay) : seuls, plus larges.
+// « cours » et « replay » (vidéo 4) : un cours de crypto en très gros, et le portefeuille fictif rejoué face au Bitcoin.
 // « constellation » : la mémoire longue en 3D, une étoile par souvenir ; celles que le cerveau utilise s'allument.
 import * as THREE from "three";
 
-const GRANDS = new Set(["page", "formulaire"]);
+const GRANDS = new Set(["page", "formulaire", "cours", "multicours", "replay"]);
 const MAX_PETITS = 3;
+
+// les nombres en français : 72 655 € ; 92,53 € ; 0,2003 € ; −0,8 %
+function eurosFr(v) {
+  if (v === undefined || v === null || isNaN(v)) return "—";
+  const d = v >= 1000 ? 0 : v >= 1 ? 2 : Math.min(10, Math.max(2, 3 - Math.floor(Math.log10(v))));
+  return v.toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d }).replace(/[\u202f\u00a0]/g, " ") + " €";
+}
+// le prix dans son unité : 72 655 € ; 343,46 $ ; 7 957 pts
+function valeurFr(v, unite) {
+  if (!unite || unite === "EUR") return eurosFr(v);
+  const texte = eurosFr(v).replace(" €", "");
+  if (unite === "pts") return (v || 0).toLocaleString("fr-FR", { maximumFractionDigits: 0 }).replace(/[\u202f\u00a0]/g, " ") + " pts";
+  return texte + " " + ({ USD: "$", GBP: "£", JPY: "¥", GBp: "p" }[unite] || unite);
+}
+function pctFr(v) {
+  const a = Math.abs(v || 0), d = a >= 100 ? 0 : (a > 0 && a < 0.1) ? 2 : 1;     // −0,04 % plutôt que −0,0 %
+  return (v >= 0 ? "+" : "−") + a.toLocaleString("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d }) + " %";
+}
+function heureFr(t) { return t ? new Date(t * 1000).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : ""; }
+function dateCourte(t, periode) {
+  const d = new Date(t * 1000);
+  return periode === "24h" ? `hier ${d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : d.toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
+}
+
+let compteurDegrades = 0;
 
 function el(balise, classe, texte) {
   const e = document.createElement(balise);
@@ -122,16 +148,216 @@ const RENDUS = {
     const bs = e.barres || [];
     if (!bs.length) { corps.appendChild(el("p", "h-vide", "Rien à afficher.")); return; }
     const max = Math.max(...bs.map(x => x.valeur), 1);
+    const maxAbs = Math.max(...bs.map(x => Math.abs(x.valeur)), 0.01);
     const bloc = el("div", "h-barres");
     bs.forEach((x, i) => {
       const ligne = el("div", "h-barre h-apparait" + (x.brille ? " brille" : "")); ligne.style.animationDelay = (150 + i * 60) + "ms";
       const tete = el("div", "h-jauge-tete");
-      tete.append(el("span", "", x.nom + (x.detail ? ` · ${x.detail}` : "")), el("b", "", Math.round(x.valeur).toLocaleString("fr") + (e.unite ? " " + e.unite : "")));
+      // en %, une décimale (« 0,4 % » plutôt que « 0 % ») et le signe ; ailleurs, l'entier comme avant
+      const texte = e.unite === "%" ? pctFr(x.valeur) : Math.round(x.valeur).toLocaleString("fr") + (e.unite ? " " + e.unite : "");
+      tete.append(el("span", "", x.nom + (x.detail ? ` · ${x.detail}` : "")), el("b", "", texte));
       const piste = el("div", "h-piste"), barre = el("i"); piste.appendChild(barre);
       ligne.append(tete, piste); bloc.appendChild(ligne);
-      setTimeout(() => { barre.style.transform = `scaleX(${Math.max(0, x.valeur) / max})`; }, 260 + i * 60);
+      if (e.unite === "%" && x.valeur < 0) ligne.classList.add("baisse");          // une baisse : barre rouge, à sa longueur
+      const echelle = e.unite === "%" ? Math.abs(x.valeur) / maxAbs : Math.max(0, x.valeur) / max;
+      setTimeout(() => { barre.style.transform = `scaleX(${echelle})`; }, 260 + i * 60);
     });
     corps.appendChild(bloc);
+  },
+
+  // le graphique géant d'un cours (vidéo 4) : le prix et la variation en très gros, en vert ou en rouge, la courbe
+  // qui se trace de gauche à droite, le dernier point qui bat. Pensé pour se lire sur un téléphone (miniature).
+  cours(corps, e) {
+    const fmt = v => valeurFr(v, e.unite);
+    const pts = (e.points || []).filter(p => p && p[1] > 0);
+    const hausse = (e.variation || 0) >= 0;
+    const bloc = el("div", "h-cours " + (hausse ? "hausse" : "baisse"));
+    const haut = el("div", "h-cours-haut");
+    const id = el("div", "h-cours-id");
+    id.append(el("b", "", e.nom || e.symbole), el("small", "", `${e.unite === "pts" ? "indice" : `${e.symbole} / ${e.unite || "EUR"}`} · ${e.source || ""} · ${heureFr(e.quand)}${e.etat ? " · " + e.etat : ""}`));
+    const periodes = el("div", "h-cours-periodes");
+    (e.periodes || [["24h", "24 H"], ["7j", "7 J"], ["30j", "30 J"]]).forEach(([p, t]) => periodes.appendChild(el("span", p === e.periode ? "actif" : "", t)));
+    haut.append(id, periodes);
+    const chiffres = el("div", "h-cours-chiffres");
+    const prix = el("div", "h-cours-prix", fmt(e.bas || e.prix));
+    const variation = el("div", "h-cours-var", `${hausse ? "▲" : "▼"} ${pctFr(e.variation)}`);
+    variation.appendChild(el("small", "", e.libelle || ""));
+    chiffres.append(prix, variation);
+    const fig = el("div", "h-cours-fig");
+    bloc.append(haut, chiffres, fig);
+    corps.appendChild(bloc);
+    if (pts.length > 1) {
+      const L = 1000, H = 400, t0 = pts[0][0], t1 = pts[pts.length - 1][0] || t0 + 1;
+      const bas = e.bas ?? Math.min(...pts.map(p => p[1])), hautV = e.haut ?? Math.max(...pts.map(p => p[1]));
+      const marge = (hautV - bas) * 0.08 || hautV * 0.01, ymin = bas - marge, ymax = hautV + marge;
+      const X = t => (t - t0) / (t1 - t0) * L, Y = v => H - (v - ymin) / (ymax - ymin) * H;
+      const ligne = pts.map(p => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ");
+      fig.innerHTML = `<svg viewBox="0 0 ${L} ${H}" preserveAspectRatio="none">
+          <defs><linearGradient id="hcours" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="arret-haut"/><stop offset="1" class="arret-bas"/></linearGradient></defs>
+          ${[0.25, 0.5, 0.75].map(k => `<line class="grille" x1="0" x2="${L}" y1="${H * k}" y2="${H * k}"/>`).join("")}
+          <polygon class="aire" points="0,${H} ${ligne} ${L},${H}" fill="url(#hcours)"/>
+          <polyline class="trait" pathLength="1" points="${ligne}"/></svg>`;
+      const repere = (v, classe, texte) => { const r = el("span", "h-cours-repere " + classe, texte); r.style.top = (Y(v) / H * 100) + "%"; fig.appendChild(r); };
+      repere(hautV, "haut", `haut ${fmt(hautV)}`);
+      repere(bas, "bas", `bas ${fmt(bas)}`);
+      const point = el("i", "h-cours-point"); point.style.top = (Y(pts[pts.length - 1][1]) / H * 100) + "%"; fig.appendChild(point);
+      const dates = el("div", "h-cours-dates");
+      dates.append(el("span", "", e.depuis || dateCourte(t0, e.periode)), el("span", "", "maintenant"));
+      bloc.appendChild(dates);
+    }
+    // le prix monte du plus bas de la période à sa valeur, pendant que la courbe se trace
+    const debut = performance.now(), duree = 1500, depart = e.bas || e.prix;
+    (function compter(t) {
+      const k = Math.min(1, (t - debut) / duree), f = 1 - Math.pow(1 - k, 3);
+      prix.textContent = fmt(k < 1 ? depart + (e.prix - depart) * f : e.prix);
+      if (k < 1 && prix.isConnected) requestAnimationFrame(compter);
+    })(debut);
+  },
+
+  // plusieurs graphiques côte à côte (vidéo 4) : 2 à 6 cryptos, chacune son prix, sa variation et sa courbe ;
+  // les courbes se tracent l'une après l'autre. Même échelle de temps pour toutes, chacune sa propre échelle de prix.
+  multicours(corps, e) {
+    const fmt = (v, g) => valeurFr(v, g && g.unite);
+    const gs = (e.graphiques || []).slice(0, 6);
+    const grille = el("div", `h-multi n${Math.max(2, gs.length)}`);
+    gs.forEach((g, i) => {
+      const hausse = (g.variation || 0) >= 0;
+      const c = el("div", "h-multi-cellule h-cours " + (hausse ? "hausse" : "baisse"));
+      c.style.animationDelay = (120 + i * 90) + "ms";
+      const tete = el("div", "h-multi-tete");
+      tete.append(el("b", "", g.nom || g.symbole), el("span", "h-multi-var", `${hausse ? "▲" : "▼"} ${pctFr(g.variation)}`));
+      const prix = el("div", "h-multi-prix", fmt(g.prix, g));
+      const fig = el("div", "h-multi-fig");
+      c.append(tete, prix, fig);
+      grille.appendChild(c);
+      const pts = (g.points || []).filter(p => p && p[1] > 0);
+      if (pts.length < 2) return;
+      const L = 1000, H = 400, t0 = pts[0][0], t1 = pts[pts.length - 1][0] || t0 + 1;
+      const bas = g.bas ?? Math.min(...pts.map(p => p[1])), haut = g.haut ?? Math.max(...pts.map(p => p[1]));
+      const marge = (haut - bas) * 0.1 || haut * 0.01, ymin = bas - marge, ymax = haut + marge;
+      const X = t => (t - t0) / (t1 - t0) * L, Y = v => H - (v - ymin) / (ymax - ymin) * H;
+      const ligne = pts.map(p => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ");
+      const id = `hmulti${++compteurDegrades}`;            // un dégradé par courbe : vert ici, rouge à côté
+      const retard = (0.3 + i * 0.25).toFixed(2);
+      fig.innerHTML = `<svg viewBox="0 0 ${L} ${H}" preserveAspectRatio="none">
+          <defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="arret-haut"/><stop offset="1" class="arret-bas"/></linearGradient></defs>
+          <line class="grille" x1="0" x2="${L}" y1="${H / 2}" y2="${H / 2}"/>
+          <polygon class="aire" points="0,${H} ${ligne} ${L},${H}" fill="url(#${id})" style="animation-delay:${(+retard + 1).toFixed(2)}s"/>
+          <polyline class="trait lueur" pathLength="1" points="${ligne}" style="animation-delay:${retard}s"/>
+          <polyline class="trait" pathLength="1" points="${ligne}" style="animation-delay:${retard}s"/></svg>`;
+      const reperes = el("div", "h-multi-reperes");
+      reperes.append(el("span", "", `haut ${fmt(haut, g)}`), el("span", "", `bas ${fmt(bas, g)}`));
+      c.appendChild(reperes);
+    });
+    corps.appendChild(grille);
+    const pied = el("div", "h-cours-dates");
+    const premier = gs.find(g => g.points && g.points.length);
+    pied.append(el("span", "", premier ? dateCourte(premier.points[0][0], e.periode) : ""), el("span", "", `${e.source || ""} · ${heureFr(e.quand)}`),
+                el("span", "", "maintenant"));
+    corps.appendChild(pied);
+  },
+
+  // le replay des 10 jours (vidéo 4) : la valeur du portefeuille fictif avance décision après décision face à
+  // « tout en Bitcoin le premier jour » et à « garder ses euros » ; chaque achat (vert) et vente (rouge) est un point,
+  // et la raison de la dernière décision s'affiche en grand. Le futur n'est jamais dessiné : les courbes poussent.
+  replay(corps, e) {
+    const capital = e.capital || 10000, t0 = e.debut, t1 = e.fin, n = e.decisions || 60;
+    const bloc = el("div", "h-replay");
+    const haut = el("div", "h-replay-haut");
+    const date = el("b", "h-replay-date", "il y a 10 jours");
+    const compte = el("span", "h-replay-compte", `0 / ${n} décisions`);
+    haut.append(date, compte);
+    const chiffres = el("div", "h-replay-chiffres");
+    const valeur = el("div", "h-replay-valeur", eurosFr(capital));
+    const ecart = el("div", "h-replay-ecart", "+0,0 %");
+    const legende = el("div", "h-replay-legende");
+    const ligneLeg = (classe, nom) => { const l = el("span", classe); l.append(el("i"), el("em", "", nom), el("b", "", "")); legende.appendChild(l); return l.lastChild; };
+    const vJarvis = ligneLeg("jarvis", "Jarvis"), vBtc = ligneLeg("btc", "Tout en Bitcoin"), vEuros = ligneLeg("euros", "Garder ses euros");
+    vEuros.textContent = "0,0 %"; vJarvis.textContent = vBtc.textContent = "0,0 %";
+    chiffres.append(valeur, ecart, legende);
+    const fig = el("div", "h-replay-fig");
+    fig.innerHTML = `<svg viewBox="0 0 1000 400" preserveAspectRatio="none"><line class="euros" x1="0" x2="1000"/><polyline class="btc"/><polyline class="jarvis"/></svg>`;
+    const raison = el("div", "h-replay-raison");
+    const raisonTete = el("small", "", "Je repars de 10 000 € fictifs. Je ne vois que le passé.");
+    const raisonTexte = el("p", "", "");
+    raison.append(raisonTete, raisonTexte);
+    const dates = el("div", "h-cours-dates");
+    dates.append(el("span", "", dateCourte(t0, "7j")), el("span", "", "argent fictif · qwen3:14b · sans voir le futur"), el("span", "", dateCourte(t1, "7j")));
+    bloc.append(haut, chiffres, fig, dates, raison);
+    corps.appendChild(bloc);
+
+    const svg = fig.querySelector("svg"), lEuros = svg.querySelector(".euros"), pBtc = svg.querySelector(".btc"), pJarvis = svg.querySelector(".jarvis");
+    const J = [[t0, capital]], B = [[t0, capital]], marques = [];
+    let anim = null;
+    const X = t => (t - t0) / (t1 - t0) * 1000;
+    function echelle(extra) {
+      const vals = J.concat(B).map(p => p[1]).concat(extra || [], [capital]);
+      let lo = Math.min(...vals), hi = Math.max(...vals);
+      const m = Math.max((hi - lo) * 0.12, capital * 0.004); lo -= m; hi += m;
+      return v => 400 - (v - lo) / (hi - lo) * 400;
+    }
+    function dessiner(tete) {        // tete : la fraction (0 à 1) du dernier segment déjà tracée
+      const jt = J.slice(), bt = B.slice();
+      if (tete < 1 && jt.length > 1) {
+        const k = tete, a = jt[jt.length - 2], b = jt[jt.length - 1], c = bt[bt.length - 2], d = bt[bt.length - 1];
+        jt[jt.length - 1] = [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k];
+        bt[bt.length - 1] = [c[0] + (d[0] - c[0]) * k, c[1] + (d[1] - c[1]) * k];
+      }
+      const Y = echelle();
+      const pts = arr => arr.map(p => `${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join(" ");
+      pJarvis.setAttribute("points", pts(jt)); pBtc.setAttribute("points", pts(bt));
+      lEuros.setAttribute("y1", Y(capital)); lEuros.setAttribute("y2", Y(capital));
+      marques.forEach(m => { m.el.style.left = (X(m.t) / 10) + "%"; m.el.style.top = (Y(m.v) / 4) + "%"; m.el.style.opacity = X(m.t) <= X(jt[jt.length - 1][0]) + 0.5 ? 1 : 0; });
+    }
+    function avancer(duree) {
+      const debut = performance.now();
+      cancelAnimationFrame(anim);
+      (function pas(t) {
+        const k = Math.min(1, (t - debut) / duree);
+        dessiner(k);
+        if (k < 1 && bloc.isConnected) anim = requestAnimationFrame(pas);
+      })(debut);
+    }
+    let dernierPas = 0;
+    bloc.majReplay = d => {
+      if (d.type === "replay_etape") {
+        const maintenant = performance.now();
+        const duree = Math.max(250, Math.min(900, dernierPas ? (maintenant - dernierPas) * 0.85 : 600));
+        dernierPas = maintenant;
+        J.push([d.t, d.valeur]); B.push([d.t, d.btc]);
+        if (d.action === "achat" || d.action === "vente") {
+          const m = el("i", "h-replay-marque " + d.action); m.title = `${d.date} · ${d.action} ${d.crypto}`;
+          fig.appendChild(m); marques.push({ el: m, t: d.t, v: d.valeur });
+        }
+        avancer(duree);
+        date.textContent = d.date;
+        compte.textContent = `${d.i} / ${n} décisions`;
+        valeur.textContent = eurosFr(d.valeur);
+        const pj = (d.valeur / capital - 1) * 100, pb = (d.btc / capital - 1) * 100;
+        ecart.textContent = pctFr(pj); bloc.classList.toggle("perte", pj < 0);
+        vJarvis.textContent = pctFr(pj); vBtc.textContent = pctFr(pb);
+        const quoi = d.action === "achat" ? `ACHAT ${d.crypto} · ${eurosFr(d.montant_eur)}` : d.action === "vente" ? `VENTE ${d.crypto} · ${eurosFr(d.montant_eur)}` : "J'ATTENDS";
+        raisonTete.textContent = `${d.date} · ${quoi}`;
+        raison.className = "h-replay-raison " + d.action;
+        raisonTexte.textContent = d.raison ? `« ${d.raison} »` : "";
+      } else if (d.type === "replay_fin") {
+        const c = d.comparaison || {};
+        const fin = el("div", "h-replay-fin");
+        const carte = (nom, pct, classe) => { const x = el("div", classe); x.append(el("small", "", nom), el("b", "", pct === 0 ? "0 %" : pctFr(pct))); return x; };
+        const meilleur = Math.max(c.jarvis_pct, c.tout_en_btc_pct, 0);
+        fin.append(carte("Jarvis", c.jarvis_pct, "jarvis" + (c.jarvis_pct === meilleur ? " gagne" : "")),
+                   carte("Tout en Bitcoin", c.tout_en_btc_pct, "btc" + (c.tout_en_btc_pct === meilleur ? " gagne" : "")),
+                   carte("Garder ses euros", 0, "euros" + (meilleur === 0 ? " gagne" : "")));
+        raison.replaceWith(fin);
+        // les chiffres finaux partout (à la fin des 10 jours, pas à la dernière décision, 4 h plus tôt)
+        J.push([t1, d.valeur_finale_eur]); if (c.tout_en_btc_eur) B.push([t1, c.tout_en_btc_eur]); else B.push([t1, B[B.length - 1][1]]);
+        dessiner(1);
+        valeur.textContent = eurosFr(d.valeur_finale_eur);
+        ecart.textContent = pctFr(c.jarvis_pct); bloc.classList.toggle("perte", c.jarvis_pct < 0);
+        vJarvis.textContent = pctFr(c.jarvis_pct); vBtc.textContent = pctFr(c.tout_en_btc_pct);
+        date.textContent = `${d.ordres} ordres · ${d.decisions_faites} décisions`;
+      }
+    };
   },
 
   // la vidéo tournée par Jarvis (consigne 8) : d'abord une barre de progression, puis le film en boucle
@@ -433,7 +659,7 @@ export function creerPanneaux(zone, options = {}) {
     tete.append(el("span", "h-index", String(compteur).padStart(2, "0")), el("h3", "", e.titre || genre),
                 el("span", "h-genre", { texte: "texte", liste: "liste", graphique: "données", images: "images", frise: "frise",
                   recherche: "recherche", page: "page", formulaire: "réglages", constellation: "mémoire", nuage: "vidéos",
-                  barres: "données", video: "vidéo" }[genre]));
+                  barres: "données", video: "vidéo", cours: "cours", multicours: "cours", replay: "replay" }[genre]));
     if (e.retour) { const b = el("button", "", "retour"); b.onclick = () => ouvrir(e.retour); tete.appendChild(b); }
     const externe = e.externe || (genre === "page" ? e.url : "");
     if (externe) { const b = el("button", "", "navigateur"); b.onclick = () => window.open(externe, "_blank"); tete.appendChild(b); }

@@ -16,8 +16,8 @@ logging.basicConfig(filename=str(JOURNAL), level=logging.INFO, encoding="utf-8",
                     format="%(asctime)s %(levelname)s %(name)s : %(message)s")
 journal = logging.getLogger("outils")
 
-from . import (briefing, calculer, chercher_fichiers, chercher_web, ecrire, etat_machine, fenetres, generer_image, generer_video, globe, heure, hologramme, notes,
-               miniatures, ouvrir_application, ouvrir_fichier, ouvrir_site, presse_papiers, ranger, rappel, resumer_video, retenir, systeme,
+from . import (bourse, briefing, calculer, chercher_fichiers, crypto, chercher_web, ecrire, etat_machine, fenetres, generer_image, generer_video, globe, heure, hologramme, notes,
+               miniatures, ouvrir_application, ouvrir_fichier, ouvrir_site, portefeuille, presse_papiers, ranger, rappel, replay_crypto, alerte_crypto, resumer_video, retenir, systeme,
                telegram, voir_ecran, webcam, youtube_chaine, youtube_commentaires)
 
 DELAI_MAX = 60
@@ -76,9 +76,10 @@ def action_pc(nom: str, arguments: dict | None) -> str | None:
 MODULES = [heure, calculer, notes.NOTER, notes.LIRE, etat_machine, chercher_fichiers, chercher_web,
            ouvrir_application, ouvrir_fichier, ouvrir_site, systeme, voir_ecran, generer_image, telegram, rappel,
            fenetres, ranger, ecrire, presse_papiers, retenir, webcam, resumer_video, miniatures,
-           youtube_chaine, youtube_commentaires, briefing, hologramme, globe, generer_video]
+           youtube_chaine, youtube_commentaires, briefing, hologramme, globe, generer_video, crypto, portefeuille, replay_crypto, alerte_crypto, bourse]
 # les outils dont la réponse est vérifiée chiffre par chiffre contre leur JSON de faits
-OUTILS_A_FAITS = {"youtube_chaine": youtube_chaine, "youtube_commentaires": youtube_commentaires, "briefing": briefing}
+OUTILS_A_FAITS = {"youtube_chaine": youtube_chaine, "youtube_commentaires": youtube_commentaires, "briefing": briefing,
+                  "crypto": crypto, "portefeuille": portefeuille, "bourse": bourse}
 OUTILS = {m.NOM: m for m in MODULES}
 
 
@@ -155,3 +156,7 @@ def demarrer_taches_de_fond():
     """Index des fichiers et rappels programmés : lancés par le serveur au démarrage."""
     chercher_fichiers.demarrer_index()
     rappel.recharger()
+    from ..crypto import alertes                       # vidéo 4 : les alertes de cours survivent au redémarrage
+    alertes.charger()
+    if alertes.lister():
+        alertes.demarrer()

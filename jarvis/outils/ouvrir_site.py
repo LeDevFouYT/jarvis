@@ -80,11 +80,11 @@ def _normaliser(t: str) -> str:
 
 
 def _ouvrir(url: str) -> bool:
-    import os
+    from .. import systeme_os
     try:
-        os.startfile(url)
+        systeme_os.ouvrir(url)
         return True
-    except OSError:
+    except (OSError, systeme_os.Absent):
         return webbrowser.open(url)
 
 

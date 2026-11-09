@@ -116,7 +116,15 @@ class Edge:
         await asyncio.sleep(attente)
 
     def fermer(self):
+        # tout l'arbre : tuer le seul lanceur laissait le navigateur sans fenêtre tourner en fond, WebGL sans limite
+        # d'images (vu le 16/10 : sept Edge oubliés, la cadence des tests suivants passée de 0,6 à 11,6 ms par image)
+        # le lanceur rend la main à un navigateur orphelin : on retrouve tous les processus par leur dossier de profil
         self.proc.kill()
+        profil = Path(self.profil).name
+        subprocess.run(["powershell", "-NoProfile", "-Command",
+                        f"Get-CimInstance Win32_Process -Filter \"Name='msedge.exe'\" | Where-Object {{ $_.CommandLine -like '*{profil}*' }}"
+                        " | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"],
+                       capture_output=True, timeout=30)
 
 
 async def mesurer(edge: Edge, avant: str = "", duree_ms: int = 6000) -> dict:

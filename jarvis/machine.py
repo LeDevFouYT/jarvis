@@ -58,6 +58,9 @@ def vram_libre_mo() -> int | None:
 
 
 def _ram_go() -> float:
+    from . import systeme_os
+    if not systeme_os.est_windows():
+        return systeme_os.ram_go()
     try:
         class M(ctypes.Structure):
             _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong), ("ullTotalPhys", ctypes.c_ulonglong),
@@ -109,8 +112,11 @@ def examiner(dossier: str | None = None) -> dict:
         remarques.append(f"Seulement {ram:.0f} Go de mémoire vive : les chargements seront lents (16 Go recommandés).")
     if disque_go and disque_go < DISQUE_MIN_GO:
         remarques.append(f"Seulement {disque_go:.0f} Go libres sur le disque cible : il en faut {DISQUE_MIN_GO} pour les modèles.")
-    if platform.system() != "Windows":
-        remarques.append("Jarvis est prévu pour Windows 10 ou 11.")
+    if platform.system() == "Linux":
+        remarques.append("Linux : l'essentiel marche (parler, écouter, cerveau, mémoire, fichiers, images) ; la superposition, "
+                         "le placement des fenêtres et la frappe au clavier restent pour Windows (voir le README).")
+    elif platform.system() != "Windows":
+        remarques.append("Jarvis est prévu pour Windows 10 ou 11, et Linux.")
     return {"verdict": verdict, "raison": raison, "remarques": remarques, "gpu": gpu, "ram_go": ram,
             "disque_libre_go": disque_go, "cpu": cpu, "modeles": modeles, "systeme": platform.platform()}
 

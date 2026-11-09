@@ -5,6 +5,8 @@ import ctypes
 import time
 from ctypes import wintypes
 
+from .. import systeme_os
+
 NOM = "ecrire"
 DESCRIPTION = ("Tape un texte dicté dans la fenêtre active (Word, un mail, le bloc-notes, un champ de discussion), exactement "
                "comme au clavier. À utiliser quand la personne dit « écris », « tape », « dicte » ou « écris dans ma fenêtre ». "
@@ -15,7 +17,7 @@ PARAMETRES = {
 }
 REQUIS = ["texte"]
 
-user32 = ctypes.WinDLL("user32", use_last_error=True)
+user32 = systeme_os.dll("user32", use_last_error=True)
 INPUT_KEYBOARD, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE = 1, 0x0002, 0x0004
 VK_RETURN = 0x0D
 
@@ -82,6 +84,11 @@ def taper(texte: str, entree: bool = False, pause_s: float = 0.25) -> int:
 
 
 def executer(texte: str, entree: bool = False) -> str:
+    from .. import systeme_os
+    try:
+        systeme_os.verifier("ecrire")
+    except systeme_os.Absent as e:
+        return str(e)
     if not texte:
         return "Il n'y a rien à écrire."
     titre = titre_actif()

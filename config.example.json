@@ -6,6 +6,7 @@
   },
   "personnage": {
     "titre": "monsieur",
+    "prenom": "Jarvis",
     "personnalite": "majordome"
   },
   "ollama": {

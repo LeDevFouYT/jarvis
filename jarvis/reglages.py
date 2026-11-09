@@ -7,6 +7,7 @@ import re
 
 import requests
 
+from . import prenom
 from .config import CONFIG, RACINE, SECRETS
 
 FICHIER_SECRETS = RACINE / ".secrets"
@@ -66,6 +67,7 @@ def lire() -> dict:
                      "commandes": CONFIG.get("telegram", {}).get("commandes", True),
                      "reponse_vocale": CONFIG.get("telegram", {}).get("reponse_vocale", True)},
         "personnalite": {"actuelle": personnalites.actuelle(), "choix": personnalites.liste()},
+        "personnage": {"prenom": prenom.actuel()},
         "conversation": {"continue": cc.get("actif", True), "secondes": cc.get("secondes", 8),
                          "interruption": inter.get("actif", True), "sensibilite": _sensibilite_actuelle(),
                          "anglais": "en" in oreilles.get("langues", ["fr", "en"])},
@@ -86,6 +88,12 @@ def _ecrire_reglages_avances(donnees: dict) -> tuple[bool, bool]:
     if p in personnalites.PERSONNALITES and p != personnalites.actuelle():
         CONFIG.setdefault("personnage", {})["personnalite"] = p
         change = True
+    nom = str((donnees.get("personnage") or {}).get("prenom") or "").strip()
+    if nom and nom != prenom.actuel():
+        ok, propre = prenom.valider(nom)          # un prénom refusé (trop court, mot courant) laisse l'ancien
+        if ok:
+            CONFIG.setdefault("personnage", {})["prenom"] = propre
+            change = True
     conv = donnees.get("conversation") or {}
     oreilles = CONFIG.setdefault("oreilles", {})
     if "continue" in conv or "secondes" in conv:

@@ -2,6 +2,14 @@
 
 Un assistant vocal local façon Iron Man. Il écoute le micro en permanence, se réveille à « Hey Jarvis », comprend le français, répond à voix haute en vous appelant « monsieur », et agit sur le PC : état de la machine, fichiers, applications, sites web, volume, captures, description de l'écran, génération d'images, Telegram, rappels. Tout tourne sur la machine. La seule chose qui peut sortir sur Internet est la voix ElevenLabs, optionnelle, et le compteur en bas du HUD le montre.
 
+**Depuis votre téléphone, gratuitement** : Jarvis se pilote aussi par Telegram, en texte ou en message vocal, comme à
+distance (voir « Depuis le téléphone » plus bas). Il ne tourne pas SUR le téléphone : il tourne sur votre PC, et le
+téléphone lui parle.
+
+**Votre Jarvis** : changez son prénom (« appelle-toi Nova »), sa voix (« change ta voix : une voix grave et posée »),
+sa personnalité, et enregistrez le tout en profils. Glissez-lui un dossier sur l'interface : il dit ce qu'il contient,
+le résume, le range ou y cherche quelque chose.
+
 ## Licence et prix
 
 Jarvis est gratuit, et son code aussi : **licence AGPL v3**. Vous pouvez l'utiliser chez vous autant que vous voulez, le
@@ -15,7 +23,7 @@ Tout est gratuit. Un service en ligne payant existait pour les machines sans car
 
 ## Ce qu'il faut
 
-- Windows 10 ou 11, Python 3.12, une carte NVIDIA. Version complète à partir de 12 Go de VRAM (qwen3:14b, gemma3:12b, Whisper turbo), version réduite en dessous (qwen3:8b, gemma3:4b, Whisper small). Sans carte NVIDIA, ça démarre mais le cerveau tourne sur processeur, très lentement, sans vision ni images.
+- Windows 10 ou 11 (ou Linux, voir plus bas), Python 3.12, une carte NVIDIA. Version complète à partir de 12 Go de VRAM (qwen3:14b, gemma3:12b, Whisper turbo), version réduite en dessous (qwen3:8b, gemma3:4b, Whisper small). Sans carte NVIDIA, ça démarre mais le cerveau tourne sur processeur, très lentement, sans vision ni images.
 - Ollama installé (ollama.com). Les modèles se téléchargent tout seuls au premier lancement.
 - Un micro. Un casque évite que Jarvis s'entende parler.
 - Facultatif : ComfyUI pour les images, une clé ElevenLabs pour une plus belle voix, un bot Telegram pour les messages et les rappels.
@@ -30,6 +38,47 @@ Le plus simple : double-cliquer `Jarvis-Installateur.exe`. Il examine la machine
 3. Ouvrir `config.json` : le micro dans `oreilles.peripherique` (liste avec `.venv\Scripts\python.exe -m jarvis peripheriques`), la table `applications`, le chemin de ComfyUI si vous l'avez.
 4. Double-cliquer `lancer.bat` : Ollama démarre s'il ne tourne pas, les modèles manquants se téléchargent, le HUD s'ouvre dans le navigateur. Appuyer sur F pour le plein écran.
 5. Dire « Hey Jarvis », attendre l'anneau qui s'ouvre, poser la question.
+
+## Configuration
+
+| | Minimum | Ce que j'utilise dans les vidéos |
+|---|---|---|
+| Carte graphique | NVIDIA 8 Go (version réduite : qwen3:8b, gemma3:4b, Whisper small) | RTX 5080, 16 Go |
+| Mémoire vive | 16 Go | 32 Go |
+| Disque | 40 Go libres (modèles), SSD de préférence | SSD NVMe |
+| Système | Windows 10 / 11, ou Linux (Ubuntu 22.04+) | Windows 11 |
+
+Sans carte NVIDIA, Jarvis démarre mais le cerveau tourne sur le processeur : lent, sans vision ni images.
+Les voix inventées, les hologrammes et les vidéos demandent la version complète (12 Go et plus).
+
+## Questions qui reviennent
+
+- **« Je peux le refaire moi-même avec Claude Code, gratuitement ? »** Le code est là, gratuit, et vous pouvez le
+  modifier comme vous voulez. Claude Code, lui, n'est pas gratuit (il faut un abonnement Claude) ; Jarvis n'en a pas
+  besoin pour tourner.
+- **« Ça marche sur téléphone ? »** Par Telegram, oui, avec le PC allumé (voir plus haut).
+- **« Sur Mac ? »** Pas encore (voir « Sous Linux »).
+- **« Un .exe, c'est sûr ? »** Son code est dans `installateur/`, et son empreinte SHA-256 est dans chaque note de
+  version : `Get-FileHash Jarvis-Installateur.exe` doit donner la même.
+
+## Sous Linux
+
+Ubuntu 22.04 / 24.04 et dérivées, une carte NVIDIA avec son pilote. Une fois : `./installer.sh` (il dit quels
+paquets système manquent, `sudo apt install …`, et comment installer Ollama), puis `./lancer.sh` à chaque fois.
+
+| Marche sous Linux | Pas encore (Windows seulement) |
+|---|---|
+| parler, écouter (micro par PortAudio), le cerveau, la mémoire, les personnalités, le prénom, les voix | la superposition par-dessus le bureau |
+| ouvrir fichiers, dossiers, sites et programmes (xdg-open, par leur nom) | placer, réduire, fermer les fenêtres |
+| ranger et chercher des fichiers, le dossier glissé, les rappels, Telegram | taper au clavier (dictée), le presse-papiers |
+| volume et verrouillage (pactl, loginctl), voir l'écran (X11) | l'installateur .exe et le service Jarvis Cloud |
+
+Ces pouvoirs répondent une phrase claire (« Pas encore sous Linux : … ») au lieu de planter. Le code testé
+(`python -m jarvis.tests.linux`) vérifie chaque commande Linux appelée ; il n'a pas encore tourné sur une vraie
+machine Linux : dites-nous en commentaire ce qui coince chez vous.
+
+**Sur Mac** : pas encore. La couche par système (`jarvis/systeme_os.py`) prépare le terrain, mais les images, les
+sculptures 3D et les vidéos passent par ComfyUI sur carte NVIDIA, qui n'a pas d'équivalent propre sur Mac.
 
 ## Commandes vocales
 
@@ -126,7 +175,7 @@ Réglages › Telegram guide en quatre étapes : créer le bot avec @BotFather, 
 - La fenêtre de conversation continue et l'interruption s'entendent mal avec des haut-parleurs forts : un casque reste le bon réglage.
 - L'alternance de VRAM reste visible : regarder l'écran ou la webcam prend une trentaine de secondes avec gemma3:4b, puis le cerveau se recharge pendant que la question suivante attend ; trois miniatures prennent 1 min 30 à 2 min (ComfyUI ralentit nettement sous 4 Go de mémoire vive libre). Jarvis répond tout de suite « je regarde » ou « je lance le dessin », puis parle quand c'est prêt.
 - La vérification des chiffres YouTube dit si un chiffre ou une phrase est faux ; elle ne corrige pas la réponse déjà dite.
-- Le mot de réveil est fragile avec de la musique ou une télévision en fond. Le modèle attend « Hey Jarvis » en anglais ; « Jarvis » seul n'est pas garanti. Seuil réglable dans `oreilles.seuil`.
+- Le mot de réveil est fragile avec de la musique ou une télévision en fond. Le modèle attend « Hey Jarvis » en anglais ; « Jarvis » seul n'est pas garanti. Seuil réglable dans `oreilles.seuil`. Avec un autre prénom (« appelle-toi Nova »), le réveil passe par la phrase entière : 20 phrases sur 20 et aucun faux réveil en 5 minutes de conversation au test du 29/10 (voix de synthèse, sans bruit de fond : pas encore mesuré avec de la musique).
 - Whisper invente parfois une phrase sur un souffle ; les classiques sont filtrés par une liste, pas tous.
 - Le mode cloud demande la passerelle (dossier `passerelle/`) déployée sur un serveur : le client paie des minutes de calcul, et tout ce qui a besoin d'une carte graphique passe par là : le cerveau, la vision, les images, mais aussi les vidéos, les sculptures 3D et les miniatures. L'écoute et la voix restent sur sa machine. Ce qui traverse n'est qu'une description : la machine qui calcule n'exécute jamais d'ordre venu d'un client.
 

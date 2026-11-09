@@ -88,7 +88,8 @@ def resoudre(nom: str) -> Path | None:
     if re.fullmatch(r"(la |le )?demo(nstration)?([ _-]?(de )?rangement)?", n):
         return DEMO
     if n in _DOSSIERS_CONNUS:
-        return _dossier_connu(_DOSSIERS_CONNUS[n])
+        from .. import systeme_os
+        return systeme_os.dossier_connu(n)
     p = Path(os.path.expandvars(os.path.expanduser(nom.strip().strip('"'))))
     if p.is_absolute() and p.is_dir():
         return p
@@ -127,7 +128,7 @@ def refus(dossier: Path) -> str | None:
     if RACINE.resolve() == d or RACINE.resolve() in d.parents and d != DEMO.resolve() and DEMO.resolve() not in d.parents:
         return "c'est le dossier de Jarvis"
     if any((p / ".git").exists() for p in (d, *d.parents)) and not _est_la_demo(d):
-        # le sous-dossier d'un projet aussi (audit du 19/09 : « range F:\Remotion_YT\public » cassait le projet)
+        # le sous-dossier d'un projet aussi (audit du 19/09 : « range le dossier public d'un projet » cassait le projet)
         return "c'est un projet de programmation (dossier .git), son organisation compte"
     return None
 

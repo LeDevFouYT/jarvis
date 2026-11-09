@@ -66,7 +66,9 @@ def installer_ollama() -> bool:
 def demarrer_ollama(url: str, installer_si_absent: bool = False) -> bool:
     if ollama_repond(url):
         return True
-    if not _exe_ollama() and not (installer_si_absent and installer_ollama()):
+    from . import systeme_os
+    # l'installateur d'Ollama téléchargé ici est un .exe : sous Linux, son script officiel demande sudo (installer.sh le dit)
+    if not _exe_ollama() and not (installer_si_absent and systeme_os.est_windows() and installer_ollama()):
         _dire("Ollama n'est pas installé (commande « ollama » introuvable). Installez-le depuis ollama.com puis relancez.")
         return False
     if ollama_repond(url):                      # son installateur le démarre tout seul

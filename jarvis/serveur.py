@@ -36,6 +36,7 @@ from . import (commandes, compteur, confirmations, memoire, oreilles, outils, pe
                telegram_entrant, voix)
 from . import langue as module_langue
 from . import armures, majordome
+from . import prenom as module_prenom
 from .cerveau import CERVEAU, MODE, MODELE
 from .config import CONFIG, RACINE
 from .outils import etat_machine, ranger, rappel, telegram
@@ -201,6 +202,12 @@ def _brancher_evenements():
                 voix.VOIX.dire(texte)
         elif e["type"] == "vision_erreur":
             voix.VOIX.dire(f"Je n'ai pas réussi à voir l'écran, {module_cerveau.TITRE}.")
+        elif e["type"] == "crypto_parle":
+            # vidéo 4 : la fin du replay, une alerte de cours. Dit à voix haute (Telegram si demandé), gardé dans l'historique.
+            voix.VOIX.dire(e["texte"])
+            if e.get("telegram") and telegram.configure():
+                threading.Thread(target=telegram.envoyer, args=(e["texte"],), daemon=True).start()
+            CERVEAU.historique.append({"role": "assistant", "content": e.get("historique") or e["texte"]})
 
     for module in outils.MODULES:
         if hasattr(module, "sur_evenement"):
@@ -218,6 +225,10 @@ def _brancher_evenements():
             threading.Thread(target=telegram.envoyer, args=(texte,), daemon=True).start()
 
     rappel.sur_rappel = sur_rappel
+
+    from .crypto import alertes as alertes_crypto       # vidéo 4 : une alerte de cours est dite et part sur Telegram
+    alertes_crypto.sur_alerte = lambda a, texte: sur_evenement_module(
+        {"type": "crypto_parle", "t": time.time(), "texte": texte, "telegram": True, "alerte": a["texte"]})
 
 
 def _prechauffer():
@@ -460,6 +471,7 @@ def etat():
             "superposition": __import__("jarvis.superposition_pilote", fromlist=["x"]).actif(),
             "titre": module_cerveau.TITRE, "souvenirs": memoire.nombre(), "solde": CERVEAU.solde_cloud(),
             "personnalite": personnalites.actuelle(), "theme": armures.actuelle(), "latence": DERNIERE_LATENCE or None,
+            "prenom": module_prenom.actuel(), "sigle": module_prenom.sigle(),
             "conversation_continue": CONFIG["oreilles"].get("conversation_continue", {}),
             "interruption": {**CONFIG["oreilles"].get("interruption", {}),
                              "coupee": bool(OREILLES and OREILLES.interruption_coupee)},
@@ -547,7 +559,7 @@ def _extinction():
 # Le dialogue
 # =============================================================================================
 def _tutoie() -> bool:
-    return personnalites.actuelle() == "coach"
+    return personnalites.actuelle() in ("coach", "nul")          # les deux qui tutoient
 
 
 def _dire_reponse(question: str, reponse: str, t0: float, source: str, langue: str = "fr", mode: str | None = None,
@@ -580,13 +592,16 @@ def _reflexe(texte: str, langue: str) -> str | None:
     """L'heure et la date sans passer par le modèle : réponse en un clin d'œil, dans le ton de la personnalité."""
     maintenant = datetime.now()
     nom = personnalites.actuelle()
+    texte = module_prenom.retirer_appel(texte)        # « Nova, quelle heure est-il ? »
     if _REFLEXE_HEURE.match(texte.strip()):
         if langue == "en":
             base = maintenant.strftime("It's %I:%M %p.").replace(" 0", " ").lstrip("0")
-            return {"sarcastique": base + " Time flies when you're having fun.", "coach": base + " Let's make it count!"}.get(nom, base)
+            return {"sarcastique": base + " Time flies when you're having fun.", "coach": base + " Let's make it count!",
+                    "parano": base + " Why do you ask?", "nul": "Uh... " + base + " I think."}.get(nom, base)
         base = f"Il est {maintenant.hour} h {maintenant.minute:02d}."
         return {"sarcastique": base + " Le temps file, surtout quand on me le demande.",
-                "coach": base + " Chaque minute compte, on avance !"}.get(nom, base)
+                "coach": base + " Chaque minute compte, on avance !",
+                "parano": base + " Pourquoi voulez-vous le savoir ?", "nul": "Euh… " + base + " Je crois."}.get(nom, base)
     if _REFLEXE_DATE.match(texte.strip()):
         if langue == "en":
             return maintenant.strftime("Today is %A, %B %d, %Y.").replace(" 0", " ")
@@ -669,6 +684,123 @@ def _live(argument: str, texte: str, t0, source, langue, mode, titre: str):
                          t0, source, langue, mode, "live")
 
 
+TOURNOI = None
+
+
+def _commande_tournoi(action: str, titre: str) -> str:
+    """Le tournoi (vidéo 5). Les candidats parlent par la voix, le HUD suit par l'événement `tournoi` ; ce qui est
+    rendu ici, c'est la phrase de l'animateur (Jarvis lui-même)."""
+    global TOURNOI
+    from . import profils, tournoi
+    if action == "lancer":
+        try:
+            TOURNOI = tournoi.Tournoi(CERVEAU, lambda t, m: voix.VOIX.dire(t, moteur=m), EMETTEUR.emettre, titre)
+        except profils.Refus as e:
+            return f"Je ne peux pas lancer le tournoi : {e}."
+        CONFIG["oreilles"]["sourd_pendant_parole"] = True     # trois voix dans les haut-parleurs : aucune ne compte pour une question
+        TOURNOI.emettre()
+        threading.Thread(target=TOURNOI.presenter, daemon=True).start()
+        noms = [c["prenom"] for c in TOURNOI.candidats]
+        return f"Le tournoi commence : {', '.join(noms[:-1])} et {noms[-1]}. Qu'ils se présentent."
+    if TOURNOI is None:
+        return "Aucun tournoi en cours. Dites « lance le tournoi »."
+    if action == "epreuve":
+        return TOURNOI.epreuve_suivante()
+    if action == "plaidoiries":
+        threading.Thread(target=TOURNOI.plaidoiries, daemon=True).start()
+        return "Plaidoiries. Quinze secondes chacun."
+    if action.startswith("eliminer:"):
+        return TOURNOI.eliminer(action.split(":", 1)[1])
+    TOURNOI.emettre_brut({"type": "tournoi_fin", "t": time.time()})
+    TOURNOI = None
+    CONFIG["oreilles"]["sourd_pendant_parole"] = False
+    return "Fin du tournoi."
+
+
+def _commande_profil(commande: str, argument, texte: str, t0: float, source: str, langue: str, mode, titre: str) -> dict:
+    """Les profils (vidéo 5) : prénom + voix + personnalité + armure, d'un coup."""
+    from . import profils
+    rep = lambda phrase: _dire_reponse(texte, phrase, t0, source, langue, mode, commande)   # noqa: E731
+    if commande == "liste_profils":
+        p = profils.lister()
+        if not p:
+            return rep("Aucun profil. Réglez-moi, puis dites « enregistre ce profil sous le nom… ».")
+        return rep(f"{len(p)} profil{'s' if len(p) > 1 else ''} : " + ", ".join(
+            f"{x['nom']} ({x['personnalite']}, voix {x['voix']})" for x in p) + ".")
+    try:
+        if commande == "enregistrer_profil":
+            p = profils.creer(argument)
+            return rep(f"Profil {p['nom']} enregistré : {p['prenom']}, voix {p['voix']}, mode {p['personnalite']}.")
+        p = profils.appliquer(argument)
+    except profils.Refus as e:
+        return rep(f"Je ne peux pas, {titre} : {e}.")
+    EMETTEUR.emettre({"type": "prenom", "t": time.time(), "prenom": p["prenom"], "sigle": module_prenom.sigle(p["prenom"])})
+    EMETTEUR.emettre({"type": "personnalite", "t": time.time(), "nom": p["personnalite"]})
+    EMETTEUR.emettre({"type": "theme", "t": time.time(), "theme": p["armure"]})
+    EMETTEUR.emettre({"type": "voix_choisie", "t": time.time(), "nom": p["voix"]})
+    threading.Thread(target=CERVEAU.rechauffer, daemon=True).start()
+    return rep(personnalites.PERSONNALITES[p["personnalite"]]["accuse"].format(titre=titre).split(".")[0]
+               + f". Je suis {p['prenom']}.")
+
+
+def _action_depot(action: str, requete: str = "") -> str:
+    """Le dernier dossier glissé sur le HUD (vidéo 5) : ranger, résumer, chercher. Rend la phrase à dire."""
+    from . import depot
+    from .outils import panneaux
+    if action == "ranger":
+        return depot.ranger()
+    if action == "resumer":
+        if not depot.DERNIER:
+            return "Glissez d'abord un dossier sur l'interface."
+        resume = depot.resumer(lambda c, t: CERVEAU.generer(c, t, delai=120))
+        panneaux.texte(f"Résumé : {depot.DERNIER['nom']}", resume)
+        return resume
+    r = depot.chercher(requete)
+    if depot.DERNIER:
+        panneaux.liste(f"« {requete} » dans {depot.DERNIER['nom']}",
+                       [{"titre": t["chemin"].split("/")[-1], "detail": t["chemin"], "meta": f"trouvé dans le {t['dans']}"}
+                        for t in r["trouves"][:40]], vide="Rien trouvé.")
+    return r["phrase"]
+
+
+def _commande_voix(commande: str, argument, texte: str, t0: float, source: str, langue: str, mode, titre: str) -> dict:
+    """Les voix créées (vidéo 5) : créer en fond, choisir, revenir à Kokoro, lister."""
+    from . import voix_creees
+
+    def dire(phrase: str):
+        voix.VOIX.dire(phrase)
+        EMETTEUR.emettre({"type": "reponse", "t": time.time(), "texte": phrase, "source": "voix"})
+
+    rep = lambda phrase: _dire_reponse(texte, phrase, t0, source, langue, mode, commande)   # noqa: E731
+    if commande == "creer_voix":
+        if not argument["description"]:
+            return rep(f"Décrivez-moi la voix, {titre} : par exemple « change ta voix : une voix grave et posée ».")
+        try:
+            voix_creees.verifier_description(argument["description"])          # les mots sûrs, tout de suite
+        except voix_creees.Refus as e:
+            return rep(f"Je ne peux pas, {titre} : {e}.")
+        durees = sorted(v["creation_s"] for v in voix_creees.lister() if v.get("creation_s"))
+        attente = durees[len(durees) // 2] if durees else 210                # la médiane des créations, pas une promesse
+        voix_creees.creer_en_fond(argument["description"], argument["nom"] or None, CERVEAU, EMETTEUR.emettre, dire)
+        minutes = max(1, round(attente / 60))
+        return rep(f"Je dessine six voix et je garde la meilleure. Comptez {'une minute' if minutes == 1 else f'{minutes} minutes'} environ.")
+    if commande == "choisir_voix":
+        try:
+            v = voix_creees.choisir(argument)
+        except voix_creees.Refus as e:
+            noms = ", ".join(x["nom"] for x in voix_creees.lister())
+            return rep(f"{str(e)[:1].upper()}{str(e)[1:]}. Mes voix : {noms}.")
+        EMETTEUR.emettre({"type": "voix_choisie", "t": time.time(), "nom": v["nom"]})
+        return rep(f"Je prends la voix {v['nom']}, {titre}. Elle se charge, comptez une vingtaine de secondes.")
+    if commande == "voix_normale":
+        voix_creees._ecrire_config(moteur="local")
+        majordome.suivre_moteur("local")
+        EMETTEUR.emettre({"type": "voix_choisie", "t": time.time(), "nom": "Kokoro"})
+        return rep(f"Je reprends ma voix d'origine, {titre}.")
+    noms = [v["nom"] for v in voix_creees.lister()]
+    return rep(f"J'ai {len(noms)} voix : {', '.join(noms)}. Et ma voix d'origine, sur le processeur.")
+
+
 def _commande(commande: str, argument, texte: str, t0: float, source: str, langue: str, mode) -> dict:
     tu = _tutoie()
     titre = module_cerveau.TITRE
@@ -724,6 +856,24 @@ def _commande(commande: str, argument, texte: str, t0: float, source: str, langu
         EMETTEUR.emettre({"type": "personnalite", "t": time.time(), "nom": argument})
         threading.Thread(target=CERVEAU.rechauffer, daemon=True).start()
         return _dire_reponse(texte, personnalites.PERSONNALITES[argument]["accuse"].format(titre=titre), t0, source, langue, mode, commande)
+    if commande == "prenom":
+        ok, propre = module_prenom.definir(argument)
+        if not ok:
+            return _dire_reponse(texte, f"Je garde mon prénom, {titre} : il me faut {propre}." if "lettres" in propre
+                                 else f"Je garde mon prénom, {titre} : {propre}.", t0, source, langue, mode, commande)
+        EMETTEUR.emettre({"type": "prenom", "t": time.time(), "prenom": propre, "sigle": module_prenom.sigle(propre)})
+        threading.Thread(target=CERVEAU.rechauffer, daemon=True).start()      # la consigne porte le prénom
+        return _dire_reponse(texte, (f"C'est noté, je m'appelle {propre}. Dites « {propre} » pour me parler."
+                                     if not tu else f"Ok, je m'appelle {propre}. Dis « {propre} » pour me parler."),
+                             t0, source, langue, mode, commande)
+    if commande == "tournoi":
+        return _dire_reponse(texte, _commande_tournoi(argument, titre), t0, source, langue, mode, commande)
+    if commande in ("profil", "enregistrer_profil", "liste_profils"):
+        return _commande_profil(commande, argument, texte, t0, source, langue, mode, titre)
+    if commande.startswith("depot_"):
+        return _dire_reponse(texte, _action_depot(commande[6:], argument), t0, source, langue, mode, commande)
+    if commande in ("creer_voix", "choisir_voix", "voix_normale", "liste_voix"):
+        return _commande_voix(commande, argument, texte, t0, source, langue, mode, titre)
     if commande == "armure":
         armures.definir(argument)
         EMETTEUR.emettre({"type": "theme", "t": time.time(), "theme": argument})
@@ -766,6 +916,9 @@ def _commande(commande: str, argument, texte: str, t0: float, source: str, langu
         return _dire_reponse(texte, "Sentinelle activée, je surveille." if actif else "Sentinelle désactivée.", t0, source, langue, mode, commande)
     if commande == "annuler":
         return _dire_reponse(texte, ranger.annuler()["message"], t0, source, langue, mode, commande)
+    if commande.startswith("crypto") or commande in ("portefeuille", "bourse"):
+        from .crypto import actions as crypto_actions          # vidéo 4 : argent fictif, des faits, jamais un conseil
+        return _dire_reponse(texte, crypto_actions.executer(commande, argument), t0, source, langue, mode, commande)
     if commande == "confirmer":
         return _dire_reponse(texte, confirmations.confirmer(), t0, source, langue, mode, commande)
     if commande == "refuser":
@@ -1038,15 +1191,107 @@ def scan_resultat(r: ResultatScan):
 
 @app.post("/reglages")
 def reglages_ecrire(donnees: dict):
-    avant = personnalites.actuelle()
+    avant, prenom_avant = personnalites.actuelle(), module_prenom.actuel()
     etat_reglages = reglages.ecrire(donnees)
-    if personnalites.actuelle() != avant:
+    if module_prenom.actuel() != prenom_avant:
+        EMETTEUR.emettre({"type": "prenom", "t": time.time(), "prenom": module_prenom.actuel(),
+                          "sigle": module_prenom.sigle()})
+    if personnalites.actuelle() != avant or module_prenom.actuel() != prenom_avant:
         threading.Thread(target=CERVEAU.rechauffer, daemon=True).start()
     if OREILLES and CONFIG["oreilles"].get("interruption", {}).get("actif", True):
         OREILLES.interruption_coupee = False           # réactivée à la main : on lui redonne sa chance
     EMETTEUR.emettre({"type": "reglages", "t": time.time(), "voix": etat_reglages["voix"]["moteur"],
                       "telegram": etat_reglages["telegram"]["configure"], "personnalite": personnalites.actuelle()})
     return etat_reglages
+
+
+@app.post("/depot")
+def depot_recevoir(donnees: dict):
+    """Le HUD a reçu un dossier ou des fichiers glissés : noms relatifs, tailles, dates (jamais de chemin : le navigateur
+    ne le donne pas), et le début des petits fichiers texte. Jarvis fait le bilan, le dit, et attend l'action."""
+    from . import depot
+    r = depot.recevoir(donnees.get("nom"), list(donnees.get("fichiers") or []), bool(donnees.get("dossier")),
+                       dict(donnees.get("extraits") or {}))
+    EMETTEUR.emettre({"type": "depot", "t": time.time(), "nom": depot.DERNIER.get("nom") if r.get("ok") else None,
+                      "retrouve": bool(r.get("chemin")), "bilan": r.get("bilan")})
+    if r.get("ok"):
+        from .outils import panneaux
+        b = r["bilan"]
+        panneaux.graphique(f"Reçu : {depot.DERNIER['nom']}", [{"nom": fam, "valeur": n, "max": b["nombre"], "unite": "fichiers"}
+                                                             for fam, n in b["familles"].items()])
+    EMETTEUR.emettre({"type": "reponse", "t": time.time(), "texte": r["phrase"]})
+    prise = voix.VOIX.dire(r["phrase"])
+    # source « voix » : à la fin de la phrase, la fenêtre de conversation s'ouvre (sur_voix, parole_fin) et la réponse
+    # (« range-le ») n'a pas besoin du prénom
+    PRISES[prise] = {"t0": time.time(), "t_texte": time.time(), "source": "voix", "mesuree": True}
+    return r
+
+
+@app.post("/depot/action")
+def depot_action(donnees: dict):
+    """Les boutons du HUD : {action: ranger | resumer | chercher, requete}."""
+    action = str(donnees.get("action") or "")
+    if action not in ("ranger", "resumer", "chercher"):
+        return JSONResponse({"erreur": "action inconnue"}, status_code=400)
+    phrase = _action_depot(action, str(donnees.get("requete") or ""))
+    threading.Thread(target=lambda: (voix.VOIX.dire(phrase), EMETTEUR.emettre({"type": "reponse", "t": time.time(), "texte": phrase})),
+                     daemon=True).start()
+    return {"phrase": phrase}
+
+
+@app.get("/voix/liste")
+def voix_liste():
+    from . import voix_creees
+    return {"voix": voix_creees.lister(), "actuelle": voix_creees.actuelle(), "moteur": CONFIG["voix"]["moteur"]}
+
+
+@app.post("/voix/creer")
+def voix_creer(donnees: dict):
+    """Depuis les Réglages : même chemin que « change ta voix : … » (en fond, suivi par les événements voix_creation)."""
+    from . import voix_creees
+    description = str(donnees.get("description") or "").strip()
+    try:
+        voix_creees.verifier_description(description)
+    except voix_creees.Refus as e:
+        return JSONResponse({"erreur": str(e)}, status_code=400)
+    dire = lambda p: (voix.VOIX.dire(p), EMETTEUR.emettre({"type": "reponse", "t": time.time(), "texte": p}))  # noqa: E731
+    voix_creees.creer_en_fond(description, str(donnees.get("nom") or "").strip() or None, CERVEAU, EMETTEUR.emettre, dire)
+    return {"lance": True}
+
+
+@app.post("/voix/choisir")
+def voix_choisir(donnees: dict):
+    from . import voix_creees
+    try:
+        v = voix_creees.choisir(str(donnees.get("nom") or ""))
+    except voix_creees.Refus as e:
+        return JSONResponse({"erreur": str(e)}, status_code=400)
+    EMETTEUR.emettre({"type": "voix_choisie", "t": time.time(), "nom": v["nom"]})
+    return v
+
+
+@app.post("/voix/cloner")
+def voix_cloner(donnees: dict):
+    """Un enregistrement (base64, WAV/MP3/OGG/WebM) devient une voix. Sans `accord: true`, refus : la case
+    « c'est ma voix, ou j'ai l'accord écrit de la personne » doit être cochée."""
+    import base64
+    from . import voix_creees
+    if donnees.get("accord") is not True:
+        return JSONResponse({"erreur": "cochez « c'est ma voix, ou j'ai l'accord écrit de la personne »"}, status_code=400)
+    try:
+        brut = base64.b64decode(str(donnees.get("audio") or ""), validate=True)
+    except ValueError:
+        return JSONResponse({"erreur": "enregistrement illisible"}, status_code=400)
+    if not 1000 < len(brut) < 20_000_000:
+        return JSONResponse({"erreur": "enregistrement vide ou trop gros (20 Mo au plus)"}, status_code=400)
+    with tempfile.NamedTemporaryFile(suffix=".audio", delete=False) as f:
+        f.write(brut)
+    try:
+        return voix_creees.cloner(str(donnees.get("nom") or ""), f.name, True)
+    except voix_creees.Refus as e:
+        return JSONResponse({"erreur": str(e)}, status_code=400)
+    finally:
+        os.unlink(f.name)
 
 
 @app.post("/reglages/tester/{quoi}")

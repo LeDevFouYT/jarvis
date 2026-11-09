@@ -32,6 +32,9 @@ def _volume_interface():
 
 
 def volume(valeur: str | None) -> str:
+    from .. import systeme_os
+    if not systeme_os.est_windows():
+        return systeme_os.volume_linux(valeur)
     v = _volume_interface()
     actuel = round(v.GetMasterVolumeLevelScalar() * 100)
     if valeur is None or str(valeur).strip() == "":
@@ -50,6 +53,9 @@ def volume(valeur: str | None) -> str:
 
 
 def muet(couper: bool) -> str:
+    from .. import systeme_os
+    if not systeme_os.est_windows():
+        return systeme_os.muet_linux(couper)
     v = _volume_interface()
     v.SetMute(1 if couper else 0, None)
     return "Son coupé." if couper else "Son rétabli."
@@ -67,6 +73,9 @@ def capture() -> str:
 
 
 def verrouiller() -> str:
+    from .. import systeme_os
+    if not systeme_os.est_windows():
+        return systeme_os.verrouiller_linux()
     if not ctypes.windll.user32.LockWorkStation():
         return "Windows a refusé de verrouiller la session."
     return "Session verrouillée."

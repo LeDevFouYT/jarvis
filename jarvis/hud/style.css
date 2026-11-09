@@ -247,6 +247,109 @@ body.erreur #mode { color: var(--rouge); }
 @keyframes h-point-in { from { opacity: 0; transform: translateY(6px); } to { opacity: .95; transform: none; } }
 @keyframes h-halo { 0%, 100% { opacity: .25; } 50% { opacity: .75; } }
 .h-nuage-info { font-size: .72rem; color: var(--texte); min-height: 1.2em; margin: 2px 4px 4px; }
+/* le graphique géant d'un cours (vidéo 4) : vert en hausse, rouge en baisse (couleurs de marché, pas d'armure) */
+.genre-cours .h-corps { display: flex; flex-direction: column; padding: 18px 26px 18px; overflow: hidden; }
+.h-cours { --marche: #35f29a; --marche-rgb: 53,242,154; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.h-cours.baisse { --marche: #ff4d5e; --marche-rgb: 255,77,94; }
+.h-cours-haut { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.h-cours-id b { display: block; font-size: clamp(1.4rem, 2.6vw, 3.4rem); font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--clair);
+  text-shadow: 0 0 22px rgba(var(--c),.55); line-height: 1; }
+.h-cours-id small { display: block; margin-top: 6px; font-size: clamp(.6rem, .75vw, .95rem); letter-spacing: .24em; text-transform: uppercase; color: var(--dim); }
+.h-cours-periodes { display: flex; gap: 8px; }
+.h-cours-periodes span { font-size: clamp(.7rem, .95vw, 1.2rem); letter-spacing: .2em; padding: 5px 12px; border: 1px solid rgba(var(--c),.25); color: var(--dim); }
+.h-cours-periodes span.actif { border-color: var(--marche); color: var(--marche); box-shadow: 0 0 16px rgba(var(--marche-rgb),.35); }
+.h-cours-chiffres { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 2.4vw; row-gap: 0; }
+.h-cours-prix { font-size: clamp(3.2rem, 6.6vw, 10rem); font-weight: 700; line-height: 1.02; color: #fff; font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em; text-shadow: 0 0 34px rgba(var(--marche-rgb),.45); white-space: nowrap; }
+.h-cours-var { font-size: clamp(1.8rem, 3.4vw, 5rem); font-weight: 700; color: var(--marche); white-space: nowrap; font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 26px rgba(var(--marche-rgb),.6); }
+.h-cours-var small { margin-left: .6em; font-size: .36em; letter-spacing: .24em; text-transform: uppercase; color: var(--dim); font-weight: 600; text-shadow: none; }
+.h-cours-fig { position: relative; flex: 1; min-height: 120px; margin: 8px 0 0; }
+.h-cours-fig svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.h-cours-fig .grille { stroke: rgba(var(--c),.12); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-dasharray: 4 6; }
+.h-cours-fig .arret-haut { stop-color: var(--marche); stop-opacity: .38; }
+.h-cours-fig .arret-bas { stop-color: var(--marche); stop-opacity: 0; }
+.h-cours-fig .aire { opacity: 0; animation: apparition .9s 1.3s ease-out forwards; }
+.h-cours-fig .trait { fill: none; stroke: var(--marche); stroke-width: 4; vector-effect: non-scaling-stroke; stroke-linejoin: round;
+  stroke-dasharray: 1; stroke-dashoffset: 1; animation: trace 1.5s .35s cubic-bezier(.3,.6,.3,1) forwards; filter: drop-shadow(0 0 7px rgba(var(--marche-rgb),.85)); }
+.h-cours-repere { position: absolute; right: 0; transform: translateY(-50%); font-size: clamp(.7rem, .9vw, 1.15rem); letter-spacing: .12em; color: var(--dim2);
+  background: rgba(var(--nuit),.8); padding: 2px 8px; border-right: 2px solid rgba(var(--c),.4); opacity: 0; animation: apparition .5s 1.6s forwards; }
+.h-cours-point { position: absolute; right: -9px; width: 18px; height: 18px; margin-top: -9px; border-radius: 50%; background: var(--marche);
+  box-shadow: 0 0 20px 4px rgba(var(--marche-rgb),.8); opacity: 0; animation: apparition .3s 1.8s forwards; }
+/* le battement : un anneau qui grandit et s'efface (transform + opacity, composés par la carte : aucun repeint par image) */
+.h-cours-point::after { content: ""; position: absolute; inset: -2px; border-radius: 50%; border: 3px solid var(--marche);
+  opacity: 0; animation: h-bat 1.6s 2.1s ease-out infinite; will-change: transform, opacity; }
+@keyframes h-bat { 0% { transform: scale(1); opacity: .9; } 100% { transform: scale(3.2); opacity: 0; } }
+.h-cours-dates { display: flex; justify-content: space-between; font-size: clamp(.62rem, .8vw, 1rem); letter-spacing: .22em; text-transform: uppercase; color: var(--dim); }
+/* plusieurs graphiques côte à côte (vidéo 4) : 2 à 6 cellules, chacune en vert ou en rouge */
+.genre-multicours .h-corps { display: flex; flex-direction: column; gap: 10px; padding: 16px 22px 16px; overflow: hidden; }
+.h-multi { flex: 1; min-height: 0; display: grid; gap: 14px; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); }
+.h-multi.n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.h-multi.n5, .h-multi.n6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.h-multi-cellule { min-height: 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 12px 16px 10px;
+  border: 1px solid rgba(var(--marche-rgb),.28); background: linear-gradient(180deg, rgba(var(--marche-rgb),.06), transparent 60%);
+  animation: glisse .45s ease-out both; }
+.h-multi-tete { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.h-multi-tete b { font-size: clamp(1rem, 1.5vw, 2.1rem); letter-spacing: .12em; text-transform: uppercase; color: var(--clair);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h-multi-var { font-size: clamp(1rem, 1.6vw, 2.3rem); font-weight: 700; color: var(--marche); white-space: nowrap; font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 18px rgba(var(--marche-rgb),.55); }
+.h-multi-prix { font-size: clamp(1.8rem, 3vw, 4.4rem); font-weight: 700; color: #fff; line-height: 1.05; white-space: nowrap; font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 24px rgba(var(--marche-rgb),.4); }
+.h-multi-fig { position: relative; flex: 1; min-height: 50px; margin-top: 4px; }
+.h-multi-fig svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.h-multi-fig .grille { stroke: rgba(var(--c),.12); stroke-width: 1; vector-effect: non-scaling-stroke; stroke-dasharray: 4 6; }
+.h-multi-fig .arret-haut { stop-color: var(--marche); stop-opacity: .34; }
+.h-multi-fig .arret-bas { stop-color: var(--marche); stop-opacity: 0; }
+.h-multi-fig .aire { opacity: 0; animation: apparition .8s ease-out forwards; }
+.h-multi-fig .trait { fill: none; stroke: var(--marche); stroke-width: 3; vector-effect: non-scaling-stroke; stroke-linejoin: round;
+  stroke-dasharray: 1; stroke-dashoffset: 1; animation: trace 1.2s cubic-bezier(.3,.6,.3,1) forwards; }
+/* la lueur : un trait large et transparent sous la courbe, pas de flou (un drop-shadow sur quatre courbes animées
+   coûtait 0,3 ms par image et une image à 30 ms à l'ouverture, mesuré le 16/10) */
+.h-multi-fig .trait.lueur { stroke-width: 10; opacity: .22; }
+.h-multi-reperes { display: flex; justify-content: space-between; font-size: clamp(.6rem, .75vw, .95rem); letter-spacing: .12em; color: var(--dim2); }
+
+/* le replay des 10 jours (vidéo 4) : Jarvis (couleur de l'armure) face au Bitcoin (orange) et aux euros (pointillés) */
+.genre-replay .h-corps { display: flex; flex-direction: column; padding: 16px 26px 18px; overflow: hidden; }
+.h-replay { --gain: #35f29a; --perte: #ff4d5e; --btc: #f7931a; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.h-replay-haut { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+.h-replay-date { font-size: clamp(1.2rem, 2.2vw, 3rem); letter-spacing: .1em; text-transform: uppercase; color: var(--clair); text-shadow: 0 0 20px rgba(var(--c),.5); }
+.h-replay-compte { font-size: clamp(.7rem, .95vw, 1.2rem); letter-spacing: .22em; text-transform: uppercase; color: var(--dim); font-variant-numeric: tabular-nums; }
+.h-replay-chiffres { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: 2vw; }
+.h-replay-valeur { font-size: clamp(2.8rem, 5.6vw, 8.5rem); font-weight: 700; line-height: 1.02; color: #fff; font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 30px rgba(var(--c),.5); white-space: nowrap; }
+.h-replay-ecart { font-size: clamp(1.6rem, 3vw, 4.4rem); font-weight: 700; color: var(--gain); font-variant-numeric: tabular-nums; white-space: nowrap;
+  text-shadow: 0 0 22px rgba(53,242,154,.5); }
+.h-replay.perte .h-replay-ecart { color: var(--perte); text-shadow: 0 0 22px rgba(255,77,94,.5); }
+.h-replay-legende { margin-left: auto; display: flex; flex-direction: column; gap: 4px; font-size: clamp(.75rem, 1vw, 1.3rem); }
+.h-replay-legende span { display: flex; align-items: center; gap: 10px; color: var(--dim2); letter-spacing: .08em; }
+.h-replay-legende i { width: 26px; height: 4px; border-radius: 2px; background: var(--clair); box-shadow: 0 0 8px rgba(var(--c),.8); }
+.h-replay-legende .btc i { background: var(--btc); box-shadow: 0 0 8px rgba(247,147,26,.8); }
+.h-replay-legende .euros i { background: none; border-top: 3px dashed var(--dim); height: 0; box-shadow: none; }
+.h-replay-legende em { font-style: normal; min-width: 9.5em; }
+.h-replay-legende b { color: var(--clair); font-variant-numeric: tabular-nums; }
+.h-replay-fig { position: relative; flex: 1; min-height: 120px; margin-top: 6px; }
+.h-replay-fig svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.h-replay-fig polyline { fill: none; stroke-width: 4; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
+.h-replay-fig .jarvis { stroke: var(--clair); filter: drop-shadow(0 0 6px rgba(var(--c),.9)); }
+.h-replay-fig .btc { stroke: var(--btc); stroke-width: 3; opacity: .9; }
+.h-replay-fig .euros { stroke: var(--dim); stroke-width: 2; stroke-dasharray: 8 8; vector-effect: non-scaling-stroke; }
+.h-replay-marque { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; border: 2px solid #fff; transition: opacity .2s; }
+.h-replay-marque.achat { background: var(--gain); box-shadow: 0 0 14px 3px rgba(53,242,154,.7); }
+.h-replay-marque.vente { background: var(--perte); box-shadow: 0 0 14px 3px rgba(255,77,94,.7); }
+.h-replay-raison { border-left: 4px solid rgba(var(--c),.5); padding: 8px 16px; background: rgba(var(--c),.05); min-height: 4.2em; }
+.h-replay-raison.achat { border-left-color: var(--gain); } .h-replay-raison.vente { border-left-color: var(--perte); }
+.h-replay-raison small { display: block; font-size: clamp(.7rem, .95vw, 1.2rem); letter-spacing: .2em; text-transform: uppercase; color: var(--dim2); }
+.h-replay-raison.achat small { color: var(--gain); } .h-replay-raison.vente small { color: var(--perte); }
+.h-replay-raison p { margin: 4px 0 0; font-size: clamp(1rem, 1.5vw, 2rem); color: var(--texte); line-height: 1.3; }
+.h-replay-fin { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; animation: glisse .5s ease-out both; }
+.h-replay-fin > div { border: 1px solid rgba(var(--c),.25); padding: 10px 16px; text-align: center; }
+.h-replay-fin small { display: block; font-size: clamp(.7rem, .95vw, 1.2rem); letter-spacing: .2em; text-transform: uppercase; color: var(--dim2); }
+.h-replay-fin b { display: block; font-size: clamp(1.8rem, 3.2vw, 4.6rem); font-variant-numeric: tabular-nums; color: var(--clair); }
+.h-replay-fin .btc b { color: var(--btc); }
+.h-replay-fin .gagne { border-color: var(--gain); box-shadow: 0 0 24px rgba(53,242,154,.3), inset 0 0 24px rgba(53,242,154,.12); }
+.h-barre.baisse i { background: linear-gradient(90deg, rgba(255,77,94,.55), #ff4d5e); box-shadow: 0 0 12px rgba(255,77,94,.6); }
+.h-barre.baisse b { color: #ff4d5e; }
 .h-barres { display: flex; flex-direction: column; gap: 9px; margin: 4px 2px; }
 .h-barre.brille .h-piste i { background: linear-gradient(90deg, #ffb040, #ffd58a); }
 .h-etiquette small { display: block; color: var(--cyan); font-size: .64rem; letter-spacing: .1em; white-space: nowrap; }
@@ -493,3 +596,46 @@ body.gestes #mode::after { content: " · caméra"; color: var(--ambre); letter-s
   content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(var(--clair-rgb), .18), transparent);
   animation: court 1.8s linear infinite; }
 @keyframes court { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+/* Le dossier glissé (vidéo 5) : un cadre qui s'allume au survol, puis trois choix sous le réacteur */
+#depot-voile { position: fixed; inset: 2.5vh 2.5vw; border: 2px dashed rgba(var(--c), .8); border-radius: 18px;
+  background: rgba(var(--c), .06); display: none; align-items: center; justify-content: center; z-index: 25;
+  pointer-events: none; box-shadow: inset 0 0 120px rgba(var(--c), .18); }
+#depot-voile.visible { display: flex; animation: revele .25s ease-out both; }
+#depot-voile div { font-size: 2.2rem; letter-spacing: .12em; text-transform: uppercase; color: rgb(var(--c));
+  text-shadow: 0 0 24px rgba(var(--c), .7); }
+#depot-barre { position: fixed; left: 50%; bottom: 9vh; transform: translateX(-50%); display: none; gap: .8rem; z-index: 24; }
+#depot-barre.visible { display: flex; animation: revele .3s ease-out both; }
+#depot-barre button, #depot-barre input { font: inherit; font-size: 1.05rem; padding: .55rem 1.2rem; border-radius: 8px;
+  border: 1px solid rgba(var(--c), .7); background: rgba(0, 0, 0, .55); color: rgb(var(--c)); }
+#depot-barre button:hover:not(:disabled) { background: rgba(var(--c), .18); }
+#depot-barre button:disabled { opacity: .35; }
+#depot-barre input { min-width: 16rem; }
+
+/* Le tournoi (vidéo 5) : il prend la place de la colonne de transcription, à gauche. Vu en démo le 29/10 : posé en
+   haut de l'écran, il recouvrait la transcription, les outils, l'en-tête et les miniatures. Ici, le centre reste au
+   réacteur et à l'hologramme, la droite aux panneaux, et le HUD recentre déjà le réacteur autour de cette colonne. */
+#tournoi { position: fixed; top: var(--haut); bottom: var(--bas); left: var(--gouttiere); width: var(--col-gauche);
+  display: none; flex-direction: column; gap: .7rem; z-index: 4; pointer-events: none; }
+body.en-tournoi #gauche { visibility: hidden; }
+#tournoi.visible { display: flex; animation: revele .4s ease-out both; }
+#tournoi .tete b { display: block; font-size: 1.05rem; letter-spacing: .12em; text-transform: uppercase; color: rgb(var(--c)); }
+#tournoi .tete span { display: block; font-size: .8rem; opacity: .7; margin-top: .2rem; }
+#tournoi .colonnes { display: flex; flex-direction: column; gap: .7rem; min-height: 0; flex: 1; }
+#tournoi .candidat { border: 2px solid var(--couleur); border-radius: 12px; background: rgba(0, 0, 0, .62); padding: .7rem .9rem;
+  box-shadow: 0 0 30px color-mix(in srgb, var(--couleur) 30%, transparent); transition: filter .6s, opacity .6s;
+  flex: 1 1 0; min-height: 0; overflow: hidden; }
+#tournoi .candidat .nom { font-size: 2.6rem; font-weight: 700; letter-spacing: .05em; color: var(--couleur);
+  text-shadow: 0 0 20px var(--couleur); line-height: 1.05; }
+#tournoi .candidat .etat { font-size: .78rem; text-transform: uppercase; letter-spacing: .2em; opacity: .7; margin: .15rem 0 .45rem; }
+#tournoi .candidat .dit { font-size: .98rem; line-height: 1.32; display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical;
+  overflow: hidden; }
+#tournoi .candidat.elimine { filter: grayscale(1); opacity: .35; flex: 0 0 auto; }
+#tournoi .candidat.elimine .dit { display: none; }
+#tournoi .candidat.elimine .nom { text-decoration: line-through; font-size: 1.6rem; }
+/* Un hologramme pendant le tournoi : la colonne se réduit à une bande de prénoms, le centre reste à la sculpture */
+body.en-tournoi.holo-visible #tournoi { width: clamp(150px, 10.5vw, 210px); }
+body.en-tournoi.holo-visible #tournoi .tete span,
+body.en-tournoi.holo-visible #tournoi .candidat .dit { display: none; }
+body.en-tournoi.holo-visible #tournoi .candidat { flex: 0 0 auto; padding: .5rem .7rem; }
+body.en-tournoi.holo-visible #tournoi .candidat .nom { font-size: 1.7rem; }

@@ -162,14 +162,18 @@ def amener_devant(avant: set, programme: str | None = None, delai: float = 6.0):
     threading.Thread(target=travail, daemon=True, name="premier-plan").start()
 
 
-def ouvrir(chemin: Path, ouvreur=os.startfile):
+def ouvrir(chemin: Path, ouvreur=None):
+    from .. import systeme_os
+    if not systeme_os.est_windows():          # pas de liste de fenêtres hors de Windows : on ouvre, simplement
+        (ouvreur or systeme_os.ouvrir)(str(chemin))
+        return
     from . import fenetres as F
     avant = {f["hwnd"] for f in F.lister_fenetres()}
-    ouvreur(str(chemin))
+    (ouvreur or systeme_os.ouvrir)(str(chemin))
     amener_devant(avant)
 
 
-def executer(nom: str, type: str = "", dossier: str = "", racines: list[Path] | None = None, ouvreur=os.startfile) -> str:
+def executer(nom: str, type: str = "", dossier: str = "", racines: list[Path] | None = None, ouvreur=None) -> str:
     global direct_dernier
     direct_dernier = False
     from ..cerveau import TITRE

@@ -20,6 +20,12 @@ import numpy as np
 NIVEAU_DB = -20.0
 FONDU_S = 0.02
 PRISES_MAX = 3
+# écart toléré entre une prise et la hauteur de la voix : l'intonation d'une phrase courte fait déjà bouger la hauteur
+# d'environ 20 % (le majordome : 101 à 135 Hz pour une référence à 107 Hz, 29/10) ; au-delà, c'est la voix qui dérive
+TOLERANCE_HAUTEUR = 0.30
+# une fois la voix entendue sur trois phrases, on la juge contre sa hauteur réelle (médiane des prises gardées) : plus
+# serré, puisque l'écart phrase de création / parole courante n'entre plus en compte
+TOLERANCE_HAUTEUR_ETABLIE = 0.20
 
 # ce que Whisper écrit en chiffres : « vingt heures » -> « 20h », « trois virgule cinq » -> « 3,5 ». On compare les
 # VALEURS : « trois » entendu « 4 » ou « vingt heures » entendu « 20h 20h 20h » restent des fautes.
@@ -69,6 +75,9 @@ def mots_de(texte: str) -> list[str]:
     t = unicodedata.normalize("NFD", texte.lower())
     t = "".join(c for c in t if unicodedata.category(c) != "Mn")
     t = t.replace("'", " ").replace("’", " ").replace("-", " ")
+    # « deux pour cent » entendu « 2 % » : la même chose (vu le 29/10, chaque phrase en pour cent était refaite trois
+    # fois, pour toutes les voix ; « cent » seul multipliait par cent et « % » disparaissait)
+    t = re.sub(r"\bpour\s*cent\b", " pourcent ", t.replace("%", " pourcent "))
     return re.findall(r"[a-z0-9]+", t)
 
 
@@ -145,23 +154,35 @@ def egaliser(onde, sr=24000):
 
 
 def reecouter(phrase: str, generer, entendre, sr: int, prises_max: int = PRISES_MAX, prises_mini: int = 1,
-              hauteur_prec: float = 0.0):
-    """`generer(phrase) -> np.ndarray` à `sr`, `entendre(onde) -> str`. Rend (onde prête à jouer, rapport)."""
+              hauteur_prec: float = 0.0, hauteur_voix: float = 0.0, tolerance: float = TOLERANCE_HAUTEUR):
+    """`generer(phrase) -> np.ndarray` à `sr`, `entendre(onde) -> str`. Rend (onde prête à jouer, rapport).
+    `hauteur_voix` : la hauteur de la voix choisie (sa référence). Une prise qui s'en écarte de plus de `tolerance`
+    n'est pas « juste » même si tous les mots y sont : elle est refaite comme une faute (vidéo 5, mesuré le 29/10 :
+    la même phrase sortait à 83 Hz puis à 138 Hz d'une prise à l'autre, pour une voix créée à 99 Hz)."""
     prises = []
+
+    def hors_voix(p) -> float:
+        if not hauteur_voix or not p["hauteur"]:
+            return 0.0
+        return abs(p["hauteur"] - hauteur_voix) / hauteur_voix
+
     for _ in range(prises_max):
         onde = rogner(np.asarray(generer(phrase), dtype=np.float32), sr)
         entendu = entendre(onde)
         e = ecarts(phrase, entendu)
-        prises.append({"score": score(e), "ecarts": e, "entendu": entendu, "onde": onde})
-        justes = [p for p in prises if p["score"] == 0]
+        prises.append({"score": score(e), "ecarts": e, "entendu": entendu, "onde": onde, "hauteur": hauteur(onde, sr)})
+        justes = [p for p in prises if p["score"] == 0 and hors_voix(p) <= tolerance]
         if len(justes) >= prises_mini:
             break
     meilleur = min(p["score"] for p in prises)
     candidates = [p for p in prises if p["score"] == meilleur]
-    if len(candidates) > 1 and hauteur_prec:
-        candidates.sort(key=lambda p: abs(hauteur(p["onde"], sr) - hauteur_prec))
+    cible = hauteur_voix or hauteur_prec
+    if len(candidates) > 1 and cible:
+        candidates.sort(key=lambda p: abs(p["hauteur"] - cible))
     choisie = candidates[0]
     onde = egaliser(choisie["onde"], sr)
     return onde, {"prises": len(prises), "score": choisie["score"], "ecarts": choisie["ecarts"],
                   "entendu": choisie["entendu"], "hauteur_hz": round(hauteur(onde, sr)),
-                  "refaite": len(prises) > 1, "fautes_ecartees": [p["ecarts"] for p in prises if p["score"]]}
+                  "refaite": len(prises) > 1, "fautes_ecartees": [p["ecarts"] for p in prises if p["score"]],
+                  "hors_voix": [round(p["hauteur"]) for p in prises if p["score"] == 0 and hors_voix(p) > tolerance],
+                  "hors_voix_gardee": hors_voix(choisie) > tolerance}

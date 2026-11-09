@@ -5,6 +5,8 @@ import ctypes
 import time
 from ctypes import wintypes
 
+from .. import systeme_os
+
 NOM = "presse_papiers"
 DESCRIPTION = ("Travaille sur le texte copié dans le presse-papiers : le lire, le résumer, ou le reformuler (plus clair, plus "
                "poli, plus court, en anglais…). Le résultat d'un résumé ou d'une reformulation est remis dans le "
@@ -17,8 +19,8 @@ REQUIS = ["action"]
 direct_dernier = False                 # lu par le registre : le dernier appel donne-t-il la réponse finale ?
 
 CF_UNICODETEXT, GMEM_MOVEABLE = 13, 0x0002
-user32 = ctypes.WinDLL("user32", use_last_error=True)
-kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+user32 = systeme_os.dll("user32", use_last_error=True)
+kernel32 = systeme_os.dll("kernel32", use_last_error=True)
 user32.OpenClipboard.argtypes = [wintypes.HWND]
 user32.GetClipboardData.restype = wintypes.HANDLE
 user32.GetClipboardData.argtypes = [wintypes.UINT]

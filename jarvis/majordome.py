@@ -70,6 +70,18 @@ class Indisponible(RuntimeError):
     pass
 
 
+def hauteur_de_reference(ref: Path) -> float:
+    """La hauteur de la voix : celle de l'essai gardé à sa création (reference.json), ou celle de l'enregistrement
+    cloné. 0 si inconnue (la réécoute ne juge alors que les mots)."""
+    try:
+        meta = json.loads(ref.with_suffix(".json").read_text(encoding="utf-8"))
+        if meta.get("hauteur_hz"):
+            return float(meta["hauteur_hz"])
+        return float(next(e["hauteur_hz"] for e in meta.get("essais", []) if e["essai"] == meta.get("choisi")))
+    except (OSError, ValueError, StopIteration, KeyError):
+        return 0.0
+
+
 def reglage(nom: str):
     return CONFIG.get("voix", {}).get("majordome", {}).get(nom, DEFAUTS[nom])
 
@@ -108,9 +120,41 @@ class Majordome:
         self.sr = None
         self.infos = {}
         self.verrou = threading.Lock()           # une phrase à la fois dans le processus
-        self.hauteur_prec = 0.0
+        # par voix chargée (0 = la voix choisie, puis les voix en plus du tournoi) : sa hauteur de création, la
+        # hauteur de la phrase précédente, et les dernières prises gardées (la hauteur à laquelle elle parle vraiment)
+        self.etats: list[dict] = [{"hauteur_voix": 0.0, "hauteur_prec": 0.0, "hauteurs_dites": []}]
+        self.en_plus: list[Path] = []            # voix chargées en même temps que la principale (vidéo 5, le tournoi)
+        self.charges: list[Path] = []            # les références réellement chargées dans le processus
         self.dernier = {}
         self.echec = (0.0, "")                   # (quand, pourquoi) : un refus est retenu une minute
+
+    @property
+    def hauteur_voix(self) -> float:
+        return self.etats[0]["hauteur_voix"]
+
+    def hauteur_voix_actuelle(self, voix: int = 0) -> float:
+        """La hauteur contre laquelle on juge une prise : la médiane des dix dernières prises gardées dès qu'il y en a
+        trois (la voix parle un peu plus haut ou plus bas que sa phrase de création : +6 à +19 % pour le majordome,
+        29/10), sinon celle de la création. Une dérive se juge contre la voix telle qu'elle parle."""
+        e = self.etats[voix]
+        if len(e["hauteurs_dites"]) >= 3:
+            return float(np.median(e["hauteurs_dites"]))
+        return e["hauteur_voix"]
+
+    def regler_voix_en_plus(self, references: list[Path]):
+        """Les voix chargées en plus de la principale, dans un seul modèle (le tournoi : trois candidats, aucune attente
+        de rechargement quand l'un répond à l'autre). Le processus repart au prochain usage si la liste change."""
+        principale = Path(reglage("reference")).resolve()
+        references = [Path(r) for r in references if Path(r).resolve() != principale]
+        if [r.resolve() for r in references] != [r.resolve() for r in self.en_plus]:
+            self.en_plus = references
+            if self.actif:
+                self.arreter()
+
+    def index_voix(self, reference: Path) -> int:
+        """La position d'une voix chargée (0 si c'est la principale ou si elle n'est pas chargée)."""
+        cible = Path(reference).resolve()
+        return next((i for i, r in enumerate(self.charges) if r.resolve() == cible), 0)
 
     @property
     def actif(self) -> bool:
@@ -157,9 +201,11 @@ class Majordome:
             if libre is not None and libre < besoin:
                 raise Indisponible(f"mémoire vidéo insuffisante : {libre} Mo libres, il en faut {besoin}")
         ref = Path(reglage("reference"))
+        references = [ref] + [r for r in self.en_plus if r.exists() and r.with_suffix(".txt").exists()]
         t = time.time()
         self.proc = subprocess.Popen(
-            [_python(), str(ICI / "processus.py"), reglage("modele"), str(ref), str(ref.with_suffix(".txt"))],
+            [_python(), str(ICI / "processus.py"), reglage("modele"),
+             *[str(x) for r in references for x in (r, r.with_suffix(".txt"))]],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
             bufsize=1, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         try:
@@ -171,7 +217,11 @@ class Majordome:
             self._tuer()
             raise Indisponible(pret.get("erreur", "chargement impossible"))
         self.sr = pret["sr"]
-        self.infos = {**pret, "demarrage_s": round(time.time() - t, 1)}
+        self.charges = references
+        # une autre voix : la phrase précédente et les prises gardées ne comptent plus
+        self.etats = [{"hauteur_voix": hauteur_de_reference(r), "hauteur_prec": 0.0, "hauteurs_dites": []} for r in references]
+        self.infos = {**pret, "demarrage_s": round(time.time() - t, 1), "hauteur_voix_hz": self.hauteur_voix,
+                      "voix_chargees": [r.parent.name for r in references]}
         return self.infos
 
     def _tuer(self):
@@ -193,17 +243,21 @@ class Majordome:
                     pass
             self._tuer()
 
-    def generer(self, texte: str, langue: str = "fr") -> np.ndarray:
-        """Une prise brute, à `self.sr` Hz."""
+    def generer(self, texte: str, langue: str = "fr", voix: int = 0) -> np.ndarray:
+        """Une prise brute, à `self.sr` Hz, dans la voix chargée n° `voix`."""
         if not self.actif:
             self.demarrer()
         with self.verrou:
-            self.proc.stdin.write(json.dumps({"texte": texte, "langue": langue}, ensure_ascii=False) + "\n")
+            if not self.actif:
+                # arrêtée entre-temps (le tournoi rend la carte pour un dessin) : vu en démo le 29/10, AttributeError sur
+                # self.proc.stdin ; c'est une indisponibilité, la phrase repasse en voix locale proprement
+                raise Indisponible("la voix a été arrêtée pour libérer la carte")
+            self.proc.stdin.write(json.dumps({"texte": texte, "langue": langue, "voix": voix}, ensure_ascii=False) + "\n")
             self.proc.stdin.flush()
             r = self._lire(60)
         if "erreur" in r:
             raise RuntimeError(r["erreur"])
-        self.dernier = {k: r.get(k) for k in ("calcul_s", "pic_mo")}
+        self.dernier = {k: r.get(k) for k in ("calcul_s", "pic_mo", "voix")}      # « voix » : celle qui a vraiment parlé
         return np.frombuffer(base64.b64decode(r["audio"]), dtype=np.float32).copy()
 
     # --- la réécoute, avec le Whisper des oreilles ---
@@ -217,16 +271,18 @@ class Majordome:
                                                    condition_on_previous_text=False)
         return " ".join(s.text.strip() for s in segments).strip()
 
-    def synthetiser(self, texte: str, langue: str = "fr", freq: int = 24000) -> tuple[np.ndarray, dict]:
+    def synthetiser(self, texte: str, langue: str = "fr", freq: int = 24000, voix: int = 0) -> tuple[np.ndarray, dict]:
         t = time.time()
         if not self.actif:
             self.demarrer()
         sr = self.sr
+        voix = voix if 0 <= voix < len(self.etats) else 0
+        etat = self.etats[voix]
         calcul = {"generation": 0.0, "ecoute": 0.0}
 
         def generer(phrase):
             t0 = time.time()
-            onde = self.generer(phrase, langue)
+            onde = self.generer(phrase, langue, voix)
             calcul["generation"] += time.time() - t0
             return onde
 
@@ -237,8 +293,12 @@ class Majordome:
             return texte_entendu
 
         onde, rapport = reecoute.reecouter(texte, generer, entendre, sr, prises_max=int(reglage("prises_max")),
-                                           hauteur_prec=self.hauteur_prec)
-        self.hauteur_prec = rapport["hauteur_hz"] or self.hauteur_prec
+                                           hauteur_prec=etat["hauteur_prec"], hauteur_voix=self.hauteur_voix_actuelle(voix),
+                                           tolerance=reecoute.TOLERANCE_HAUTEUR_ETABLIE if len(etat["hauteurs_dites"]) >= 3
+                                           else reecoute.TOLERANCE_HAUTEUR)
+        etat["hauteur_prec"] = rapport["hauteur_hz"] or etat["hauteur_prec"]
+        if rapport["score"] == 0 and rapport["hauteur_hz"] and not rapport.get("hors_voix_gardee"):
+            etat["hauteurs_dites"] = (etat["hauteurs_dites"] + [rapport["hauteur_hz"]])[-10:]
         if sr != freq:
             n = int(len(onde) * freq / sr)
             onde = np.interp(np.linspace(0, len(onde) - 1, n), np.arange(len(onde)), onde).astype(np.float32)

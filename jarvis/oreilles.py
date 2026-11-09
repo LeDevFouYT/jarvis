@@ -30,6 +30,7 @@ from pathlib import Path
 
 import numpy as np
 
+from . import prenom
 from .config import CONFIG, RACINE
 
 # --- DLL NVIDIA -------------------------------------------------------------------------------
@@ -152,17 +153,18 @@ def transcrire_detail(audio) -> tuple[str, str]:
     charger_whisper()
     langues = reglage("langues", ["fr", "en"])
     beam = reglage("beam", 1)
+    # le prénom en indice : Whisper écrit juste un nom qu'il ne connaît pas (« Nova » et pas « No va »)
     commun = dict(beam_size=beam, vad_filter=True, vad_parameters={"min_silence_duration_ms": 300},
-                  condition_on_previous_text=False)
+                  condition_on_previous_text=False, initial_prompt=f"{prenom.actuel()}.")
     if len(langues) == 1:
-        segments, info = _whisper.transcribe(audio, language=langues[0], initial_prompt="Jarvis.", **commun)
+        segments, info = _whisper.transcribe(audio, language=langues[0], **commun)
         langue = langues[0]
     else:
-        segments, info = _whisper.transcribe(audio, language=None, initial_prompt="Jarvis.", **commun)
+        segments, info = _whisper.transcribe(audio, language=None, **commun)
         langue = info.language
         # une phrase courte mal reconnue (néerlandais, allemand…) ou un anglais incertain : on repasse en français
         if langue not in langues or (langue != langues[0] and info.language_probability < 0.7):
-            segments, info = _whisper.transcribe(audio, language=langues[0], initial_prompt="Jarvis.", **commun)
+            segments, info = _whisper.transcribe(audio, language=langues[0], **commun)
             langue = langues[0]
     texte = " ".join(s.text.strip() for s in segments if s.no_speech_prob < 0.8).strip()
     if info.duration < 0.3 or est_hallucination(texte):
@@ -310,19 +312,10 @@ def source_fichier(chemin: str, silence_final_s: float = 3.0):
 # =============================================================================================
 # La boucle : veille -> mot de réveil -> écoute -> transcription -> veille
 # =============================================================================================
-_REVEIL_PHRASE = re.compile(
-    r"^(?:ok |okay |hey |eh |he |dis |dis-moi |dites |allo |salut |bonjour |bonsoir |bon |alors |et )*"
-    r"(?:jarvis|jarviss|jarvice|jarvi|jarvys|javis|djarvis|charvis|jarvise|jarwis)\b[\s,.!?:;-]*", re.IGNORECASE)
-
-
 def detacher_reveil(texte: str) -> str | None:
-    """« Jarvis, quelle heure est-il » -> « quelle heure est-il » ; None si la phrase ne commence pas par Jarvis."""
-    n = unicodedata.normalize("NFD", texte.strip())
-    n = "".join(c for c in n if unicodedata.category(c) != "Mn")
-    m = _REVEIL_PHRASE.match(n)
-    if not m:
-        return None
-    return texte.strip()[m.end():].strip() if len(texte.strip()) >= m.end() else ""
+    """« Jarvis, quelle heure est-il » -> « quelle heure est-il » ; None si la phrase ne commence pas par le prénom
+    (Jarvis ou celui choisi par la personne, voir prenom.py)."""
+    return prenom.detacher(texte)
 
 
 _REVEIL_COUPE = re.compile(r"^\s*(?:arvis|rvis)\b[\s,.!?:;-]*", re.IGNORECASE)   # « …rvis, » coupé ; pas « avis » ni « vis »
@@ -332,8 +325,10 @@ def retirer_reveil(texte: str) -> str:
     """Après un réveil : « Hey Jarvis, ouvre le bloc-notes » -> « ouvre le bloc-notes » ; un « …rvis, » coupé en tête
     aussi. Le texte sans mot de réveil reste tel quel. Première lettre remise en capitale."""
     reste = detacher_reveil(texte)
-    if reste is None:
+    if reste is None and prenom.est_jarvis():          # la coupe ne vient que du modèle hey_jarvis, en retard
         reste = _REVEIL_COUPE.sub("", texte.strip(), count=1)
+    if reste is None:
+        reste = texte.strip()
     reste = reste.strip()
     return reste[:1].upper() + reste[1:] if reste else ""
 
@@ -526,16 +521,25 @@ class Oreilles(threading.Thread):
     def _veille(self, bloc):
         maintenant = time.time()
         jarvis_parle = self._jarvis_parle()
-        score = float(self.detecteur.predict(bloc)[self.mot])
-        seuil = reglage("seuil_parole", 0.85) if jarvis_parle else reglage("seuil", 0.5)
-        if score >= seuil:
-            self._reveiller(score)
+        if jarvis_parle and REGLAGES.get("sourd_pendant_parole"):
+            # le tournoi (vidéo 5) : trois voix sortent des haut-parleurs, et l'une dit le prénom d'une autre. Rien de ce
+            # qu'on entend pendant qu'un candidat parle n'est une question ; on attend le silence.
+            self.parle_veille, self.tampon_veille, self.phrase_libre = False, [], None
             return
+        # le modèle hey_jarvis ne connaît que « Jarvis » : sous un autre prénom, seul le mode phrase réveille
+        nom_jarvis = prenom.est_jarvis()
+        if nom_jarvis:
+            score = float(self.detecteur.predict(bloc)[self.mot])
+            seuil = reglage("seuil_parole", 0.85) if jarvis_parle else reglage("seuil", 0.5)
+            if score >= seuil:
+                self._reveiller(score)
+                return
         if self.fenetre_jusqua and maintenant > self.fenetre_jusqua and not self.parle_veille:
             self.fermer_fenetre("delai")
         inter = REGLAGES.get("interruption", {})
         interruption_active = inter.get("actif", True) and not self.interruption_coupee
-        if not (reglage("mode_phrase", True) or self.fenetre_jusqua or (jarvis_parle and interruption_active)):
+        if not (reglage("mode_phrase", True) or not nom_jarvis or self.fenetre_jusqua
+                or (jarvis_parle and interruption_active)):
             return
         f = bloc.astype(np.float32) / 32768.0
         p = self.vad.probabilite(f)
@@ -623,7 +627,10 @@ class Oreilles(threading.Thread):
             if reste is None:
                 self._emettre("phrase_ignoree", texte=texte)
                 return
-            if len(reste.split()) >= 2:
+            # « Nova, éteins-toi. » ou « Jarvis, silence » : un seul mot, mais une commande — on la livre au lieu
+            # d'attendre une question qui ne viendra pas (vu au test du prénom le 29/10)
+            from . import commandes
+            if len(reste.split()) >= 2 or (reste.strip(" .,!?") and commandes.analyser(reste)[0]):
                 self._emettre("mot_detecte", score="phrase")
                 self._emettre("transcription", texte=reste, duree=0.0, mode="phrase", langue=langue)
                 self._livrer(reste, langue, "phrase")

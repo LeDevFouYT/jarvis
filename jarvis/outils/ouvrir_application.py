@@ -3,6 +3,7 @@ La table nom -> commande est dans config.json (`applications`) ; monsieur peut l
 import difflib
 import os
 import re
+import shutil
 import subprocess
 import unicodedata
 import webbrowser
@@ -49,15 +50,26 @@ def lancer(cible: str) -> str:
         webbrowser.open(cible)
         return "adresse ouverte dans le navigateur"
     p = Path(cible)
+    from .. import systeme_os
     if p.is_dir():
-        os.startfile(str(p))
+        systeme_os.ouvrir(str(p))
         return f"dossier {p} ouvert"
+    if not systeme_os.est_windows():
+        # Linux : un fichier s'ouvre avec son programme, un programme se lance par son nom (firefox, gedit…)
+        if p.exists():
+            systeme_os.ouvrir(str(p))
+            return f"{p.name} ouvert"
+        programme = shutil.which(cible.split()[0]) if cible.strip() else None
+        if not programme:
+            raise systeme_os.Absent(f"je ne trouve pas le programme « {cible} » sur ce Linux")
+        systeme_os.lancer([programme, *cible.split()[1:]], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return f"{Path(programme).name} lancé"
     if p.suffix.lower() in (".bat", ".cmd"):
         subprocess.Popen(["cmd", "/c", "start", "", str(p)], cwd=str(p.parent),
                          creationflags=subprocess.CREATE_NEW_CONSOLE)
         return f"{p.name} lancé dans sa fenêtre"
     if p.suffix.lower() in (".exe", ".lnk") and p.exists():
-        os.startfile(str(p))
+        systeme_os.ouvrir(str(p))
         return f"{p.stem} lancé"
     subprocess.Popen(["cmd", "/c", "start", "", cible], creationflags=subprocess.CREATE_NO_WINDOW)
     return f"{cible} lancé"

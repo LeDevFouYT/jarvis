@@ -12,6 +12,7 @@ from ctypes import wintypes
 import psutil
 
 from .. import confirmations
+from .. import systeme_os
 
 NOM = "fenetres"
 DESCRIPTION = ("Gère les fenêtres ouvertes : placer une application sur la moitié gauche ou droite de l'écran, la mettre en "
@@ -26,8 +27,8 @@ PARAMETRES = {
 }
 REQUIS = ["action"]
 
-user32 = ctypes.WinDLL("user32", use_last_error=True)
-dwmapi = ctypes.WinDLL("dwmapi")
+user32 = systeme_os.dll("user32", use_last_error=True)
+dwmapi = systeme_os.dll("dwmapi")
 
 SW_MAXIMIZE, SW_MINIMIZE, SW_RESTORE, SW_SHOWMINNOACTIVE = 3, 6, 9, 7
 GWL_EXSTYLE, WS_EX_TOOLWINDOW = -20, 0x00000080
@@ -36,8 +37,8 @@ DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS = 14, 9
 SWP_NOZORDER, SWP_NOACTIVATE = 0x0004, 0x0010
 MONITOR_DEFAULTTONEAREST = 2
 
-EnumWindowsProc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
-MonitorEnumProc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HMONITOR, wintypes.HDC, ctypes.POINTER(wintypes.RECT), wintypes.LPARAM)
+EnumWindowsProc = systeme_os.FONCTION_RAPPEL(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+MonitorEnumProc = systeme_os.FONCTION_RAPPEL(wintypes.BOOL, wintypes.HMONITOR, wintypes.HDC, ctypes.POINTER(wintypes.RECT), wintypes.LPARAM)
 
 # Types déclarés : sur Windows 64 bits, un handle passé ou rendu comme un int 32 bits serait tronqué.
 for _nom_fn, _args, _res in [
@@ -307,6 +308,11 @@ def fermer(f: dict) -> str:
 
 
 def executer(action: str, application: str = "") -> str:
+    from .. import systeme_os
+    try:
+        systeme_os.verifier("fenetres")
+    except systeme_os.Absent as e:
+        return str(e)
     fenetres = lister_fenetres()
     if action == "lister":
         noms = []

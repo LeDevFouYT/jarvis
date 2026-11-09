@@ -50,6 +50,9 @@ def disponible() -> tuple[bool, str]:
 def definir(marche: bool, port: int = 8765) -> tuple[bool, str]:
     """Allume ou éteint la superposition. Rend (réussi, explication)."""
     global PROCESSUS
+    from . import systeme_os
+    if marche and not systeme_os.est_windows():
+        return False, systeme_os.ABSENTS_LINUX["superposition"]
     with _verrou:
         if not marche:
             if actif():

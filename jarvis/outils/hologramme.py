@@ -34,13 +34,13 @@ DIRECT = True                      # la phrase est dite telle quelle ; le reste 
 REGLAGES = CONFIG.get("hologramme", {})
 DOSSIER = RACINE / "workspace" / "hologrammes"
 IA3D = Path(REGLAGES.get("ia3d", "D:/ia3d"))
-PYTHON_3D = Path(REGLAGES.get("python", CONFIG.get("chemins", {}).get("comfyui", "F:/ComfyUI") + "/venv/Scripts/python.exe"))
+PYTHON_3D = Path(REGLAGES.get("python", CONFIG.get("chemins", {}).get("comfyui", "G:/ComfyUI") + "/venv/Scripts/python.exe"))
 FACES = int(REGLAGES.get("faces", 30000))          # 30 000 : assez fin pour l'hologramme, léger pour le HUD
 OCTREE = int(REGLAGES.get("octree", 192))          # 192 : sculpture rapide (256 = plus fin, plus lent)
 DELAI_3D = int(REGLAGES.get("delai_s", 900))
 # Les poids du sculpteur : 3 minutes de chargement depuis le disque dur (mesuré le 20/09), 20 s depuis un SSD.
 # Seule la partie « forme » sert ici (4,6 Go) ; la texture (8,3 Go) reste sur l'autre disque.
-MODELES_3D = Path(REGLAGES.get("modeles", "F:/ia3d-rapide"))
+MODELES_3D = Path(REGLAGES.get("modeles", "G:/ia3d-rapide"))
 sur_evenement = lambda e: None
 _verrou = threading.Lock()
 journal = logging.getLogger("hologramme")

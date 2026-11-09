@@ -9,7 +9,7 @@ nvidia-cublas-cu12
 nvidia-cudnn-cu12
 kokoro-onnx
 psutil
-pycaw
+pycaw; sys_platform == "win32"
 sounddevice
 openwakeword
 yt-dlp

@@ -49,7 +49,7 @@ def _normaliser(t: str) -> str:
 
 
 def _racines() -> list[Path]:
-    return [Path(os.path.expanduser(r)) for r in REGLAGES.get("racines", ["F:/"]) if Path(os.path.expanduser(r)).exists()]
+    return [Path(os.path.expanduser(r)) for r in REGLAGES.get("racines", ["G:/"]) if Path(os.path.expanduser(r)).exists()]
 
 
 def construire() -> int:

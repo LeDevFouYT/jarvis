@@ -27,7 +27,11 @@ CONSIGNE = ("Vous décrivez une capture d'écran pour un assistant vocal frança
 
 
 def ecrans() -> list[dict]:
-    """Les moniteurs, via l'API Windows : rectangle en coordonnées de l'écran virtuel et drapeau principal."""
+    """Les moniteurs, via l'API Windows : rectangle en coordonnées de l'écran virtuel et drapeau principal.
+    Hors de Windows : un seul « écran », tout le bureau (ImageGrab sous X11)."""
+    from . import systeme_os
+    if not systeme_os.est_windows():
+        return [{"bbox": None, "principal": True}]
     resultat = []
 
     class RECT(ctypes.Structure):

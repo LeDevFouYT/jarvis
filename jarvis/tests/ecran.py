@@ -22,7 +22,18 @@ TESTS = [("ordres", "il obéit · question entière, outil appelé"), ("telegram
          ("interruption", "04 · interruption"), ("eclair", "05 · réponse éclair"), ("personnalites", "06 · personnalités"),
          ("langues", "07 · langues"), ("fenetres", "09 · fenêtres"), ("rangement", "10 · rangement"), ("dictee", "11 · dictée"),
          ("sentinelle", "12 · sentinelle"), ("armures", "v3-1 · armures et mode vidéo"), ("visage", "v3-2 · le visage de particules"), ("majordome", "v3-3 · la voix du majordome"), ("hologramme", "v3-4 · les hologrammes"), ("gestes", "v3-5 · les gestes"), ("scan", "v3-6 · le scan de la pièce"), ("globe", "v3-7 · le globe"), ("video_ia", "v3-8 · la vidéo"), ("superposition", "v3-9 · hors du HUD"), ("repetition", "RÉPÉTITION GÉNÉRALE"),
-         ("live", "mode live · le tchat du direct"), ("intrusion", "intrusion · cette machine seulement"), ("cloud_complet", "cloud · un client a droit à tout"), ("passerelle_rattrapage", "passerelle · rattrapage"), ("mise_en_page", "mise en page · rien ne dépasse"), ("cadence", "cadence du HUD")]
+         ("live", "mode live · le tchat du direct"), ("intrusion", "intrusion · cette machine seulement"), ("cloud_complet", "cloud · un client a droit à tout"), ("passerelle_rattrapage", "passerelle · rattrapage"), ("mise_en_page", "mise en page · rien ne dépasse"), ("cadence", "cadence du HUD"),
+         ("crypto_cours", "crypto 1 · les cours"), ("crypto_graphique", "crypto 2 · le graphique géant"),
+         ("crypto_portefeuille", "crypto 3 · le portefeuille fictif"), ("crypto_replay", "crypto 4 · le replay des 10 jours"),
+         ("crypto_alertes", "crypto 5 · les alertes"), ("crypto_briefing", "crypto 6 · le point crypto et l'œil"),
+         ("crypto_bourse", "bourse · indices, actions, or, devises"),
+         ("prenom", "vidéo 5 · 1 · le prénom"),
+         ("voix_creees", "vidéo 5 · 2 · la voix"),
+         ("depot", "vidéo 5 · 3 · le dossier glissé"),
+         ("linux", "vidéo 5 · 4 · la version Linux"),
+         ("profils", "vidéo 5 · 5 · les profils"),
+         ("tournoi", "vidéo 5 · 6 · le tournoi"),
+         ("bugs_video5", "vidéo 5 · 7 · les bugs")]
 
 
 class Lancement:

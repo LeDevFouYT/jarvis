@@ -224,7 +224,12 @@ class Superposition:
         t.create_rectangle(8, 4, LARGEUR - 8, 28, outline="", fill=COULEUR_PRISE)
         t.create_line(16, 12, 30, 12, fill=self.couleur, width=2)
         t.create_line(16, 18, 26, 18, fill=self.couleur, width=1)
-        t.create_text(40, 15, anchor="w", text="J.A.R.V.I.S.", fill=self.couleur, font=("Consolas", 8, "bold"))
+        try:
+            from jarvis.prenom import sigle          # le prénom choisi (vidéo 5), lu dans config.json
+            nom = sigle()
+        except Exception:
+            nom = "J.A.R.V.I.S."
+        t.create_text(40, 15, anchor="w", text=nom, fill=self.couleur, font=("Consolas", 8, "bold"))
         t.create_text(LARGEUR - 16, 15, anchor="e", text="glissez-moi", fill="#7fb7c9", font=("Consolas", 7))
         t.create_line(8, 28, LARGEUR - 8, 28, fill=self.couleur, width=1)
         y = 38

@@ -44,7 +44,7 @@ VAE = REGLAGES.get("vae", "wan2.2_vae.safetensors")
 LARGEUR, HAUTEUR = int(REGLAGES.get("largeur", 832)), int(REGLAGES.get("hauteur", 480))
 PAS = int(REGLAGES.get("pas", 20))   # 20 pas : l'image reste nette jusqu'au bout (12 bavaient)
 SORTIE = RACINE / "workspace" / "videos"
-COMFY_SORTIE = Path(REGLAGES.get("comfy_sortie", CONFIG.get("chemins", {}).get("comfyui", "F:/ComfyUI") + "/output"))
+COMFY_SORTIE = Path(REGLAGES.get("comfy_sortie", CONFIG.get("chemins", {}).get("comfyui", "G:/ComfyUI") + "/output"))
 DELAI = int(REGLAGES.get("delai_s", 900))
 # le négatif officiel de Wan (chinois + anglais) : ce qu'il faut éviter dans l'image
 NEGATIF = ("色调艳丽，过曝，静态，细节模糊不清，字幕，风格，作品，画作，画面，静止，整体发灰，最差质量，低质量，JPEG压缩残留，丑陋的，"

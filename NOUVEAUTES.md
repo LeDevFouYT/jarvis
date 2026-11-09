@@ -1,5 +1,27 @@
 # Nouveautés de Jarvis
 
+## 🏆 Vos quatre demandes, et trois Jarvis qui s'affrontent
+
+- **Le prénom de votre choix** : « Nova, quelle heure est-il ? » marche comme « Jarvis ». Mesuré sur 20 phrases et 5 minutes de conversation pleine de pièges (novembre, on va, nouveau) : 20 sur 20, zéro faux réveil.
+- **Une voix décrite avec des mots** : Jarvis en dessine six, les réécoute et garde la meilleure. Imiter une personne réelle est refusé ; cloner un enregistrement demande votre accord (ou celui de la personne).
+- **Un dossier glissé dans la fenêtre** : Jarvis le retrouve sur le disque, puis le résume, le range ou cherche dedans.
+- **Linux** : `installer.sh` et `lancer.sh`. Je n'ai pas de Linux pour essayer en vrai : si vous êtes sous Linux, dites-moi ce qui coince.
+- **Les profils** : un prénom, une voix, une personnalité et une armure, enregistrés ensemble. « Enregistre ce profil sous le nom Nova », puis « passe sur le profil Nova » change tout d'un coup.
+- **Le mode tournoi** : plusieurs profils du même Jarvis s'affrontent en quatre épreuves (ranger un dossier, inventer une miniature, deviner ce que vous faites à l'écran, sculpter un dragon en 3D), et vous éliminez à la voix. Les plaidoiries parlent maintenant de l'épreuve qui vient de se jouer, plus de la première. Il faut une carte graphique de 16 Go pour le tournoi (tout tourne sur votre PC).
+- **Jarvis trader** : le cours de 20 cryptos et des grandes bourses à la voix, un graphique géant dans le HUD, un portefeuille fictif de 10 000 € (aucun argent réel, jamais), « rejoue tes 10 derniers jours » et des alertes. Il donne des chiffres, jamais de conseil. Quand il lit un prix sur un graphique, il le compare aux vraies données et se corrige à voix haute s'il s'est trompé ; les petites pertes sous 0,1 % ne s'affichent plus « −0,0 % » ; « pourquoi tu as attendu le 12 ? » ne répète plus six fois la même raison.
+
+## 📈 Jarvis trader : la crypto et la bourse, à la voix
+
+- **Le cours de 20 cryptos en euros** : « combien vaut le Bitcoin ? », « comment va l'Ethereum sur 7 jours ? », « qu'est-ce qui monte le plus ? ». Les cours viennent des API publiques de Binance (Kraken en relais), sans clé ni compte.
+- **Un graphique géant dans le HUD**, vert quand ça monte, rouge quand ça baisse, sur 24 heures, 7 jours ou 30 jours.
+- **Un portefeuille fictif de 10 000 €** : « achète pour 500 € de Solana », « vends la moitié de mon Ethereum », « combien je vaux ? ». Chaque ordre demande un oui ou un non, avec 0,1 % de frais comme sur une vraie plateforme. Aucun argent réel, jamais.
+- **« Rejoue tes 10 derniers jours »** : Jarvis repart de 10 000 € fictifs et décide seul toutes les 4 heures, sans jamais voir la suite. À la fin, il compare son résultat à « garder ses euros » et à « tout en Bitcoin le premier jour ». Demande-lui « pourquoi tu as vendu le 12 ? » : il te relit sa raison.
+- **Des alertes** : « préviens-moi si le Bitcoin passe sous 70 000 € » ou « s'il perd 1 % dans l'heure ». Il vérifie toutes les 30 secondes, prévient à voix haute (et sur Telegram si tu l'as réglé), et l'alerte survit au redémarrage.
+- **« Fais-moi le point crypto »**, avec chaque chiffre vérifié avant d'être dit, et **« regarde ce graphique »** pour qu'il décrive un graphique ouvert à l'écran.
+- **Le point des marchés** : CAC 40, S&P 500, Nasdaq, DAX, Dow Jones, les plus fortes hausses et baisses, l'or et le pétrole.
+
+Jarvis donne des chiffres, jamais de conseil : à « je devrais acheter ? », il répond qu'il n'est pas conseiller en investissement. Ce n'est pas un outil pour placer de l'argent.
+
 ## Sécurité importante
 
 Une page web ouverte dans votre navigateur pouvait, par un détournement de nom de domaine, parler à

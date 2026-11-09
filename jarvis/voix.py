@@ -133,9 +133,19 @@ def _elevenlabs(texte: str) -> np.ndarray:
 # =============================================================================================
 # Cache disque : cache/voix/<moteur>/<sha1(voix|texte)>.npy
 # =============================================================================================
+def _cle_majordome(langue: str, slug: str | None = None) -> str:
+    """La voix rejouée par le moteur majordome entre dans la clé (vidéo 5) : sinon, après « change ta voix », les
+    phrases déjà en cache revenaient avec l'ancienne voix. Le majordome d'origine garde sa clé (et son cache).
+    `slug` : une voix précise (« majordome:orage », le tournoi), sinon la voix choisie."""
+    from . import voix_creees
+    v = slug or voix_creees.actuelle()
+    return f"majordome|{langue}" if v == voix_creees.MAJORDOME else f"majordome|{v}|{langue}"
+
+
 def _chemin_cache(moteur: str, texte: str, langue: str = "fr"):
+    moteur, _, slug = moteur.partition(":")
     voix = (REGLAGES.get("elevenlabs_voix") if moteur == "elevenlabs"
-            else f"majordome|{langue}" if moteur == "majordome" else voix_kokoro(langue)[0])
+            else _cle_majordome(langue, slug or None) if moteur == "majordome" else voix_kokoro(langue)[0])
     cle = hashlib.sha1(f"{voix}|{texte.strip()}".encode("utf-8")).hexdigest()
     return CACHE / moteur / f"{cle}.npy"
 
@@ -148,10 +158,16 @@ def synthetiser(texte: str, moteur: str | None = None, langue: str = "fr") -> tu
     demande = moteur or REGLAGES.get("moteur", "local")
     infos = {"moteur_demande": demande, "moteur": demande, "cache": False, "repli": None, "langue": langue}
     t = time.time()
-    if demande == "majordome":
-        from . import majordome
-        infos["voix"] = "majordome"
-        chemin = _chemin_cache("majordome", texte, langue)
+    if demande.partition(":")[0] == "majordome":
+        # « majordome:orage » : une voix précise parmi celles chargées (le tournoi) ; « majordome » : la voix choisie
+        from . import majordome, voix_creees
+        slug = demande.partition(":")[2]
+        index = 0
+        if slug:
+            ref = voix_creees.REF_MAJORDOME if slug == voix_creees.MAJORDOME else voix_creees.DOSSIER / slug / "reference.wav"
+            index = majordome.MAJORDOME.index_voix(ref)
+        infos["voix"] = slug or "majordome"
+        chemin = _chemin_cache(demande, texte, langue)
         if REGLAGES.get("cache", True) and chemin.exists():
             infos.update(cache=True, duree=round(time.time() - t, 3))
             return np.load(chemin), infos
@@ -159,7 +175,7 @@ def synthetiser(texte: str, moteur: str | None = None, langue: str = "fr") -> tu
             infos["repli"] = "la voix du majordome se charge encore"          # pas d'attente de 30 s au démarrage
         else:
             try:
-                audio, rapport = majordome.MAJORDOME.synthetiser(texte, langue, FREQ)
+                audio, rapport = majordome.MAJORDOME.synthetiser(texte, langue, FREQ, voix=index)
                 if REGLAGES.get("cache", True) and rapport["score"] == 0:           # seule une prise juste est gardée
                     chemin.parent.mkdir(parents=True, exist_ok=True)
                     np.save(chemin, audio)

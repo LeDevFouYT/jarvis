@@ -52,6 +52,9 @@ def executer(ecran: str = "principal", question: str = "") -> str:
             chrono["capture"] = round(time.time() - t, 2)
             t = time.time()
             description = vision.decrire_image(consigne, image)
+            if "graphique financier" in consigne:          # vidéo 4 : un graphique de cours, décrit sans aucun conseil
+                from ..crypto.briefing import sans_conseil, verifier_vision
+                description = verifier_vision(sans_conseil(description))
             chrono["vision"] = round(time.time() - t, 2)
             chrono["total_description"] = round(time.time() - debut, 2)
             journal.info("description de %s en %.1f s", libelle, chrono["vision"])

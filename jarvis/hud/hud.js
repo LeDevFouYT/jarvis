@@ -144,7 +144,7 @@ function majPanneauTchat(d, titre) {
 function surLive(e) {
   switch (e.quoi) {
     case "demarre":
-      majPanneauTchat({ ligne: { genre: "jarvis", auteur: "JARVIS", texte: "j'anime le direct" } },
+      majPanneauTchat({ ligne: { genre: "jarvis", auteur: nomMaj, texte: "j'anime le direct" } },
                       (e.titre || "tchat du direct").slice(0, 46));
       note("mode live : " + (e.titre || "direct"));
       sons.jouer("panneau", reacteur.themeActuel);
@@ -153,20 +153,20 @@ function surLive(e) {
       majPanneauTchat({ ligne: { auteur: e.auteur, texte: e.texte } });
       break;
     case "repondre":
-      majPanneauTchat({ ligne: { genre: "jarvis", auteur: "JARVIS → " + (e.auteur || ""), texte: e.texte } });
+      majPanneauTchat({ ligne: { genre: "jarvis", auteur: nomMaj + " → " + (e.auteur || ""), texte: e.texte } });
       break;
     case "accueillir":
       majPanneauTchat({ ligne: { genre: "accueil", auteur: "BIENVENUE", texte: e.texte } });
       break;
     case "relancer":
-      majPanneauTchat({ ligne: { genre: "jarvis", auteur: "JARVIS", texte: e.texte } });
+      majPanneauTchat({ ligne: { genre: "jarvis", auteur: nomMaj, texte: e.texte } });
       break;
     case "souci":
       majPanneauTchat({ ligne: { genre: "souci", auteur: "TCHAT", texte: e.message || "" } });
       break;
     case "arrete":
       majPanneauTchat({ compte: e, fini: true,
-                        ligne: { genre: "jarvis", auteur: "JARVIS", texte: "fin du direct" } });
+                        ligne: { genre: "jarvis", auteur: nomMaj, texte: "fin du direct" } });
       note("fin du mode live");
       break;
   }
@@ -182,6 +182,8 @@ const scan = creerScan({ note, sons, reacteur,
 async function hologramme(e) {
   const t = performance.now();
   try {
+    // pendant le tournoi, la colonne se réduit aux prénoms : vue en démo le 29/10, elle mordait sur la sculpture
+    document.body.classList.add("holo-visible");
     const r = await reacteur.hologramme(e.url, e.objet);
     sons.jouer("allumage", reacteur.themeActuel);
     const affichage = (performance.now() - t) / 1000;
@@ -336,9 +338,10 @@ function recevoir(e) {
   switch (e.type) {
     case "mot_detecte": case "ecoute": if (etatActuel !== "ecoute") sons.jouer("reveil", reacteur.themeActuel); etat("ecoute"); break;
     case "theme": theme(e.theme); break;
+    case "prenom": nommer(e.prenom, e.sigle); note("prénom : " + e.prenom); break;
     case "visage": visage(!!e.actif); break;
     case "hologramme": hologramme(e); break;
-    case "hologramme_cacher": reacteur.cacherHologramme(); break;
+    case "hologramme_cacher": reacteur.cacherHologramme(); document.body.classList.remove("holo-visible"); break;
     case "gestes": gestes(!!e.actif); break;
     case "video_debut": panneauVideo({ genre: "video", titre: "vidéo · " + (e.prompt || "").slice(0, 46), pourcent: 0, etape: "préparation" }); etat("reflexion"); break;
     case "video_avance": majPanneauVideo(e); break;
@@ -367,6 +370,11 @@ function recevoir(e) {
     case "outil_appel": outilAppel(e); break;
     case "outil_resultat": outilResultat(e); break;
     case "panneau": panneaux.ouvrir(e); break;
+    case "replay_etape": case "replay_fin": {           // vidéo 4 : le replay du portefeuille fictif avance
+      const p = panneaux.ouvertDeGenre("replay"), b = p && p.querySelector(".h-replay");
+      if (b && b.majReplay) b.majReplay(e);
+      break;
+    }
     case "vision":
       if (e.image) panneaux.ouvrir({ genre: "images", titre: "Webcam · ce que je vois", images: [{ url: e.image,
         legende: `${e.texte} · ${e.ecran} · ${e.enregistree ? "photo gardée dans workspace/webcam" : "image non enregistrée"} · ${e.duree} s` }] });
@@ -387,6 +395,13 @@ function recevoir(e) {
     case "sortie_internet": sorties = e.total; majCompteur(); break;
     case "reglages": note(`réglages : voix ${e.voix}${e.telegram ? ", telegram prêt" : ""}`); rafraichir(); break;
     case "voix_repli": note("voix : repli local (" + e.raison + ")"); break;
+    case "voix_creation": note(e.etape === "essai" ? `voix : essai ${e.essai}/${e.sur} · ${e.hauteur_hz} Hz` + (e.score ? ` · ${e.score} écart(s)` : " · juste")
+      : e.etape === "chargement" ? "voix : chargement du dessinateur de voix" : e.etape === "fini" ? `voix : essai ${e.choisi} gardé (${e.creation_s} s)`
+      : e.etape === "choisie" ? `voix : ${e.nom} en service` : e.etape === "erreur" ? "voix : échec · " + e.message : "voix : " + e.etape); break;
+    case "voix_choisie": note("voix : " + e.nom); rafraichir(); break;
+    case "tournoi": afficherTournoi(e); break;
+    case "tournoi_fin": $("tournoi") && $("tournoi").classList.remove("visible"); document.body.classList.remove("en-tournoi"); break;
+    case "tournoi_erreur": note("tournoi : " + e.message); break;
     case "reecoute": if (e.prises > 1 || e.score) note(`réécoute : ${e.prises} prise${e.prises > 1 ? "s" : ""}` + (e.score ? ` · reste ${e.ecarts.map(x => x[1] + " → " + x[2]).join(", ")}` : ` · corrigé (${e.fautes_ecartees.flat().map(x => x[1] + " → " + (x[2] || "rien")).join(", ")})`)); break;
     case "voix_erreur": note("erreur : " + e.message); for (const p of prises.values()) if (!p.parle) reveler(p); etat("erreur"); break;
     case "silence": voixMuette = !!e.actif; note(e.actif ? "silence jusqu'au prochain réveil" : "voix rétablie"); if (e.actif) etat("repos"); break;
@@ -485,10 +500,19 @@ if (!params.get("hors_ligne")) connecter();
 // ====================================================================== barre d'état et cagnotte
 function majCompteur() { $("sorties").textContent = sorties; $("compteur").classList.toggle("sorti", sorties > 0); }
 let themeLu = false;
+// Le prénom de l'assistant (vidéo 5) : Jarvis par défaut, « appelle-toi Nova » le change partout dans le HUD.
+let nomMaj = "JARVIS";
+function nommer(prenom, sigle) {
+  nomMaj = prenom.toUpperCase();
+  $("nom-sigle").textContent = sigle || nomMaj;
+  $("nom-discret").textContent = prenom.toLowerCase();
+  document.title = prenom;
+}
 async function rafraichir() {
   try {
     const e = await (await fetch("/etat")).json();
     if (e.theme && !themeLu) { themeLu = true; if (!params.get("theme")) theme(e.theme, true); }
+    if (e.prenom) nommer(e.prenom, e.sigle);
     const g = e.machine && e.machine.gpu;
     if (g) {
       $("vram").textContent = `${(g.vram_utilisee_mo / 1024).toFixed(1)} / ${(g.vram_totale_mo / 1024).toFixed(0)} Go · ${g.temperature} °C`;
@@ -586,6 +610,12 @@ function ouvrirReglages() {
     const lp = creer("div", "ligne"); lp.appendChild(perso); dp.append(lp,
       creer("small", "", "Même mémoire, mêmes outils, seul le ton change. À la voix : « Jarvis, passe en mode coach »."));
     f.appendChild(dp);
+    const dn = creer("div"); dn.appendChild(creer("label", "", "Prénom"));
+    const champPrenom = creer("input"); champPrenom.value = r.personnage.prenom; champPrenom.maxLength = 20;
+    const ln = creer("div", "ligne"); ln.appendChild(champPrenom); dn.append(ln,
+      creer("small", "", "Le nom auquel il répond : commencez vos phrases par lui (« Nova, quelle heure est-il ? »). "
+        + "À la voix : « appelle-toi Nova ». Avec un autre nom que Jarvis, le réveil passe par la phrase entière."));
+    f.appendChild(dn);
 
     bloc("conversation");
     const cContinue = caseACocher("Conversation continue", r.conversation.continue,
@@ -626,6 +656,44 @@ function ouvrirReglages() {
     dv.appendChild(creer("small", "", md.disponible
       ? "Majordome : une voix inventée par description (aucune personne réelle imitée), chaque phrase réécoutée par Whisper et refaite si un mot manque. Environ 2 Go sur la carte graphique tant qu'elle est choisie ; chargée après le cerveau." + (md.charge ? " Chargée." : "")
       : "Majordome indisponible : " + (md.raison || "?") + "."));
+
+    // Les voix créées (vidéo 5) : décrites en mots, ou clonées d'un enregistrement avec l'accord coché
+    const vc = await (await fetch("/voix/liste")).json().catch(() => ({ voix: [] }));
+    const dvc = creer("div"); dvc.appendChild(creer("label", "", "Voix Qwen3-TTS"));
+    const voixCreee = choix(vc.voix.map(v => [v.nom, v.nom + (v.origine === "enregistrement" ? " · enregistrement" : " · " + v.description)]),
+      (vc.voix.find(v => v.slug === vc.actuelle) || {}).nom);
+    const lvc = creer("div", "ligne"); lvc.append(voixCreee, bouton("prendre cette voix", async () => {
+      const j = await (await fetch("/voix/choisir", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nom: voixCreee.value }) })).json();
+      dire(j.erreur || `Voix ${j.nom} choisie : elle se charge (une vingtaine de secondes).`, !!j.erreur);
+    })); dvc.appendChild(lvc); f.appendChild(dvc);
+    const dcr = creer("div"); dcr.appendChild(creer("label", "", "Créer une voix"));
+    const descVoix = creer("input"); descVoix.placeholder = "une voix grave et posée, un peu rauque";
+    const nomVoix = creer("input"); nomVoix.placeholder = "nom (facultatif)"; nomVoix.maxLength = 30; nomVoix.style.maxWidth = "9em";
+    const lcr = creer("div", "ligne"); lcr.append(descVoix, nomVoix, bouton("créer", async () => {
+      const rep = await fetch("/voix/creer", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: descVoix.value, nom: nomVoix.value }) });
+      const j = await rep.json();
+      dire(j.erreur || "Création lancée : six essais, la meilleure est gardée (trois à quatre minutes).", !!j.erreur);
+    }));
+    dcr.append(lcr, creer("small", "", "Décrivez des qualités (grave, douce, rapide, âgée, accent du Sud…). Aucune imitation : "
+      + "« la voix de » quelqu'un de réel est refusé. À la voix : « change ta voix : une voix grave et posée »."));
+    f.appendChild(dcr);
+    const dcl = creer("div"); dcl.appendChild(creer("label", "", "Cloner un enregistrement (5 à 30 secondes)"));
+    const fichierVoix = creer("input"); fichierVoix.type = "file"; fichierVoix.accept = "audio/*";
+    const nomClone = creer("input"); nomClone.placeholder = "nom"; nomClone.maxLength = 30; nomClone.style.maxWidth = "9em";
+    const lcl = creer("div", "ligne"); lcl.append(fichierVoix, nomClone); dcl.appendChild(lcl); f.appendChild(dcl);
+    const accordVoix = caseACocher("C'est ma voix, ou j'ai l'accord écrit de la personne enregistrée", false,
+      "Obligatoire : sans cette case, rien n'est cloné. L'accord est noté avec la date à côté de la voix.");
+    const acl = creer("div", "actions"); acl.appendChild(bouton("cloner", async () => {
+      if (!fichierVoix.files.length) return dire("Choisissez un enregistrement.", true);
+      if (!accordVoix.checked) return dire("Cochez l'accord : sans lui, rien n'est cloné.", true);
+      const brut = new Uint8Array(await fichierVoix.files[0].arrayBuffer());
+      let b64 = ""; for (let i = 0; i < brut.length; i += 32768) b64 += String.fromCharCode(...brut.subarray(i, i + 32768));
+      const j = await (await fetch("/voix/cloner", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nom: nomClone.value, audio: btoa(b64), accord: true }) })).json();
+      dire(j.erreur || `Voix ${j.nom} prête (${j.duree_s} s entendues : « ${j.texte} »). Choisissez-la ci-dessus.`, !!j.erreur);
+    })); f.appendChild(acl);
     cle("ELEVENLABS_API_KEY");
     const voixSel = choix([[r.voix.elevenlabs_voix, r.voix.elevenlabs_voix || "aucune voix choisie"]], r.voix.elevenlabs_voix);
     const dx = creer("div"); dx.appendChild(creer("label", "", "Voix ElevenLabs"));
@@ -739,7 +807,7 @@ function ouvrirReglages() {
       const cles = {}; for (const [k, i] of Object.entries(champs)) if (i.value.trim()) cles[k] = i.value.trim();
       const res = await fetch("/reglages", { method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cles, voix: { moteur: moteur.value, elevenlabs_voix: voixSel.value, kokoro_voix_en: voixEn.value },
-          cerveau: { mode: mode.value }, personnalite: { actuelle: perso.value },
+          cerveau: { mode: mode.value }, personnalite: { actuelle: perso.value }, personnage: { prenom: champPrenom.value.trim() },
           conversation: { continue: cContinue.checked, secondes: Number(cSecondes.value), interruption: cInterruption.checked,
                           sensibilite: sens.value, anglais: cAnglais.checked },
           memoire: { actif: cMemoire.checked }, youtube: { ma_chaine: maChaine.value, concurrents: concurrents.value }, telegram: { commandes: cTelegram.checked, reponse_vocale: cVocal.checked },
@@ -821,6 +889,97 @@ async function envoyerAudio() {
 // maintenir le clic sur le réacteur pour parler
 $("scene").addEventListener("pointerdown", e => { if (reacteur.estSur(e.clientX, e.clientY)) { e.preventDefault(); demarrerEcoute(); } });
 addEventListener("pointerup", arreterEcoute);
+
+// ====================================================================== le tournoi (vidéo 5)
+// Trois colonnes aux couleurs des armures, prénoms énormes (lisibles sur un téléphone), la dernière réplique dessous.
+function afficherTournoi(e) {
+  let t = $("tournoi");
+  if (!t) { t = document.createElement("div"); t.id = "tournoi"; document.body.appendChild(t); }
+  t.innerHTML = "";
+  const tete = document.createElement("div"); tete.className = "tete";
+  tete.innerHTML = `<b></b><span></span>`;
+  tete.querySelector("b").textContent = e.epreuve ? `Épreuve ${e.manche} · ${e.epreuve}` : "Le tournoi";
+  tete.querySelector("span").textContent = e.en_cours ? "en cours…" : (e.regle || "");
+  t.appendChild(tete);
+  const colonnes = document.createElement("div"); colonnes.className = "colonnes";
+  for (const c of e.candidats) {
+    const col = document.createElement("div");
+    col.className = "candidat" + (c.en_lice ? "" : " elimine");
+    col.style.setProperty("--couleur", c.couleur);
+    const nom = document.createElement("div"); nom.className = "nom"; nom.textContent = c.prenom;
+    const etat = document.createElement("div"); etat.className = "etat"; etat.textContent = c.en_lice ? c.personnalite : "éliminé";
+    const dit = document.createElement("div"); dit.className = "dit"; dit.textContent = c.derniere || "";
+    col.append(nom, etat, dit); colonnes.appendChild(col);
+  }
+  t.appendChild(colonnes);
+  t.classList.add("visible");
+  document.body.classList.add("en-tournoi");          // la colonne de transcription cède sa place au tournoi
+}
+
+// ====================================================================== le dossier glissé (vidéo 5)
+// Le navigateur ne donne jamais le chemin d'un fichier glissé : on envoie les noms relatifs, tailles et dates, et le
+// début des petits fichiers texte ; le serveur retrouve le dossier sur le disque d'après cette signature (depot.py).
+const TEXTE_DEPOT = /\.(txt|md|csv|json|py|js|html|css|xml|ya?ml|ini|log|srt|bat|gd|lua)$/i;
+const depotVoile = document.createElement("div"); depotVoile.id = "depot-voile";
+depotVoile.innerHTML = "<div>Déposez : je regarde ce que c'est</div>"; document.body.appendChild(depotVoile);
+const depotBarre = document.createElement("div"); depotBarre.id = "depot-barre"; document.body.appendChild(depotBarre);
+let depotSurvol = 0;
+function lireEntree(entree, chemin, sortie) {
+  return new Promise(resolve => {
+    if (!entree || sortie.length >= 5000) return resolve();
+    if (entree.isFile) return entree.file(f => { sortie.push({ fichier: f, chemin: chemin + f.name }); resolve(); }, () => resolve());
+    const lecteur = entree.createReader(), lus = [];
+    const lot = () => lecteur.readEntries(async es => {        // readEntries rend les entrées par paquets de 100
+      if (!es.length) { for (const e of lus) await lireEntree(e, chemin + entree.name + "/", sortie); return resolve(); }
+      lus.push(...es); lot();
+    }, () => resolve());
+    lot();
+  });
+}
+// `transfert` : un DataTransfer (glisser-déposer) ; le test passe aussi {dossier, nom, fichiers: [{fichier, chemin}]}
+async function deposer(transfert) {
+  let lus = [], dossier = false, nom = null;
+  if (transfert.fichiers) ({ fichiers: lus, dossier, nom } = transfert);
+  else {
+    const entrees = [...transfert.items].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+    dossier = entrees.length === 1 && entrees[0].isDirectory;
+    nom = dossier ? entrees[0].name : null;
+    if (entrees.length) for (const e of entrees) await lireEntree(e, "", lus);
+    else for (const f of transfert.files) lus.push({ fichier: f, chemin: f.name });
+  }
+  const extraits = {};
+  for (const l of lus.filter(l => TEXTE_DEPOT.test(l.chemin) && l.fichier.size < 200000).slice(0, 20))
+    extraits[l.chemin] = (await l.fichier.slice(0, 1500).text());
+  note(`dépôt : ${lus.length} fichier${lus.length > 1 ? "s" : ""}`);
+  const r = await (await fetch("/depot", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nom, dossier, extraits,
+      fichiers: lus.map(l => ({ chemin: l.chemin, taille: l.fichier.size, modifie: l.fichier.lastModified })) }) })).json();
+  if (r.ok) montrerBarreDepot(!!r.chemin);
+  return r;
+}
+function montrerBarreDepot(retrouve) {
+  depotBarre.innerHTML = "";
+  const action = async (quoi, requete) => {
+    depotBarre.classList.remove("visible");
+    await fetch("/depot/action", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: quoi, requete }) });
+  };
+  const b = (texte, f, actif = true) => { const x = document.createElement("button"); x.textContent = texte; x.disabled = !actif; x.onclick = f; depotBarre.appendChild(x); };
+  b("résumer", () => action("resumer"));
+  b("ranger", () => action("ranger"), retrouve);
+  const champ = document.createElement("input"); champ.placeholder = "chercher dedans…";
+  champ.onkeydown = e => { if (e.key === "Enter" && champ.value.trim()) action("chercher", champ.value.trim()); };
+  depotBarre.appendChild(champ);
+  depotBarre.classList.add("visible");
+  clearTimeout(montrerBarreDepot.minuteur); montrerBarreDepot.minuteur = setTimeout(() => depotBarre.classList.remove("visible"), 90000);
+}
+addEventListener("dragenter", e => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) { depotSurvol++; depotVoile.classList.add("visible"); } });
+addEventListener("dragleave", () => { if (--depotSurvol <= 0) { depotSurvol = 0; depotVoile.classList.remove("visible"); } });
+addEventListener("dragover", e => { if (e.dataTransfer && [...e.dataTransfer.types].includes("Files")) e.preventDefault(); });
+addEventListener("drop", e => {
+  if (!e.dataTransfer || (!e.dataTransfer.files.length && !e.dataTransfer.items.length)) return;
+  e.preventDefault(); depotSurvol = 0; depotVoile.classList.remove("visible");
+  deposer(e.dataTransfer).catch(err => note("dépôt : " + err));
+});
 
 function basculerDiscret(actif) {
   document.body.classList.toggle("discret", actif);
@@ -921,4 +1080,4 @@ function rejouer(evenements) {
   evenements.forEach(e => setTimeout(() => recevoir(e), Math.max(0, (e.t - t0) * 1000 - (performance.now() - debut))));
   return (evenements[evenements.length - 1].t - t0);
 }
-window.__jarvis = { reacteur, panneaux, recevoir, rejouer, etat, basculerDiscret, ouvrirReglages, DEMO, THEMES, theme, video, visage, hologramme, gestes, mains, scan, sons };
+window.__jarvis = { reacteur, panneaux, recevoir, rejouer, etat, basculerDiscret, ouvrirReglages, DEMO, THEMES, theme, video, visage, hologramme, gestes, mains, scan, sons, deposer };

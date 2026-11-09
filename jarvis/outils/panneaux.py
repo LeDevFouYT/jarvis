@@ -8,6 +8,9 @@ Le HUD (jarvis/hud/panneaux.js) sait dessiner chaque genre et l'anime à l'ouver
   frise      des événements datés {quand (horodatage), titre, detail}
   recherche  des résultats web cliquables {titre, domaine, url, extrait}
   page       une page intégrée {url}
+  cours      le graphique géant d'une crypto (vidéo 4) : prix, variation, courbe ; grand panneau
+  multicours plusieurs graphiques de cours côte à côte (vidéo 4) ; grand panneau
+  replay     le replay du portefeuille fictif face au Bitcoin (vidéo 4) ; grand panneau
 
 Hors du serveur (tests en ligne de commande), rien n'est diffusé : l'outil marche pareil."""
 import time
@@ -52,3 +55,44 @@ def frise(titre: str, evenements: list[dict], vide: str = "Rien de prévu.", vid
     """Événements datés {quand, titre, detail}. Avec `video` {id, duree, resume, lien} : des instants {t (secondes),
     titre, url} placés sur la durée de la vidéo ; un clic ouvre la vidéo intégrée à cet instant."""
     _diffuser("frise", titre, evenements=evenements, vide=vide, video=video)
+
+
+# Le dernier graphique de cours affiché : « regarde ce graphique » confronte ce que la vision lit à ces chiffres-là
+# (vu le 17/10 : gemma3 lisait « 20,10 € » sur un Solana à 92,10 €).
+DERNIER_GRAPHIQUE: dict = {}
+
+
+def cours(symbole: str, nom: str, periode: str, libelle: str, prix: dict, serie: list[dict], variation_periode: float | None = None,
+          unite: str = "EUR", periodes: list | None = None, depuis: str = "", etat: str = ""):
+    """Le graphique géant d'un cours (vidéo 4) : le prix et la variation en très gros, en vert ou en rouge, et la
+    courbe des clôtures de la période, terminée par le prix du moment. Assez lisible pour faire une miniature."""
+    points = [[b["t"], b["c"]] for b in serie]
+    if not points or prix["quand"] > points[-1][0]:
+        points.append([int(prix["quand"]), prix["prix"]])
+    variation = prix["variation_24h"] if periode == "24h" or variation_periode is None else variation_periode
+    if not depuis and periode == "24h":
+        depuis = "il y a 24 h"
+    DERNIER_GRAPHIQUE.clear()
+    DERNIER_GRAPHIQUE.update(nom=nom, symbole=symbole, unite=unite, quand=time.time(), libelle=libelle,
+                             valeurs={"prix": prix["prix"], "haut": max(p[1] for p in points), "bas": min(p[1] for p in points),
+                                      "variation": abs(variation), "variation_24h": abs(prix["variation_24h"])})
+    _diffuser("cours", f"{nom} · {libelle}", symbole=symbole, nom=nom, periode=periode, libelle=libelle,
+              prix=prix["prix"], variation=round(variation, 2), variation_24h=round(prix["variation_24h"], 2),
+              haut=max(p[1] for p in points), bas=min(p[1] for p in points), points=points,
+              source=prix["source"], quand=prix["quand"], unite=unite, periodes=periodes, depuis=depuis, etat=etat)
+
+
+def multicours(periode: str, libelle: str, graphiques: list[dict], quoi: str = ""):
+    """Plusieurs graphiques côte à côte (2 à 6) : {symbole, nom, prix (dict de cours.prix), serie (bougies), variation}."""
+    cellules = []
+    for g in graphiques:
+        points = [[b["t"], b["c"]] for b in g["serie"]]
+        if not points or g["prix"]["quand"] > points[-1][0]:
+            points.append([int(g["prix"]["quand"]), g["prix"]["prix"]])
+        cellules.append({"symbole": g["symbole"], "nom": g["nom"], "prix": g["prix"]["prix"], "variation": round(g["variation"], 2),
+                         "unite": g.get("unite", "EUR"),
+                         "haut": max(x[1] for x in points), "bas": min(x[1] for x in points), "points": points})
+    source = graphiques[0]["prix"]["source"] if graphiques else ""
+    quoi = quoi or ("cryptos" if all(g.get("unite", "EUR") == "EUR" and "." not in g["symbole"] and "^" not in g["symbole"] for g in graphiques) else "cours")
+    _diffuser("multicours", f"{len(cellules)} {quoi} · {libelle}", periode=periode, libelle=libelle, graphiques=cellules,
+              source=source, quand=time.time())
