@@ -504,7 +504,7 @@ const RENDUS = {
     const f = el("iframe"); f.src = e.url;
     f.allow = "autoplay; fullscreen; encrypted-media; picture-in-picture";
     // YouTube refuse un lecteur intégré sans référent (erreur 153) : l'origine seule lui suffit, jamais le chemin
-    f.referrerPolicy = /youtube(-nocookie)?\.com\/embed\//.test(e.url || "") ? "strict-origin-when-cross-origin" : "no-referrer";
+    f.referrerPolicy = /youtube(-nocookie)?\.com\/embed\b/.test(e.url || "") ? "strict-origin-when-cross-origin" : "no-referrer";
     corps.appendChild(f);
     corps.appendChild(el("div", "h-note", "Si la page reste vide, le site refuse l'affichage intégré : bouton « navigateur »."));
   },

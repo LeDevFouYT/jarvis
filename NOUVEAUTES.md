@@ -1,5 +1,9 @@
 # Nouveautés de Jarvis
 
+## 🔧 « Mets une vidéo » : fini l'erreur 153
+
+- **Le lecteur YouTube marche de nouveau.** Quand vous demandiez une vidéo, le lecteur affichait « Erreur de configuration du lecteur vidéo, erreur 153 ». YouTube a retiré la recherche intégrée dont Jarvis se servait. Jarvis cherche maintenant les vidéos lui-même, lance la première dans l'interface et enchaîne sur les suivantes. Merci à @lyosatv6328 pour le signalement.
+
 ## 🏆 Vos quatre demandes, et trois Jarvis qui s'affrontent
 
 - **Le prénom de votre choix** : « Nova, quelle heure est-il ? » marche comme « Jarvis ». Mesuré sur 20 phrases et 5 minutes de conversation pleine de pièges (novembre, on va, nouveau) : 20 sur 20, zéro faux réveil.

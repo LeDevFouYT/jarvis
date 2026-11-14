@@ -1,6 +1,8 @@
 """Outil chercher_web : une recherche sur Internet affichée dans l'onglet intégré du HUD.
   sur = web      DuckDuckGo (page HTML, sans clé), résultats parsés et rendus par le HUD ; Jarvis lit les premiers.
-  sur = youtube  lecteur YouTube intégré sur la liste de résultats (paramètre officiel listType=search).
+  sur = youtube  on cherche les vidéos (yt-dlp, sans clé), puis le lecteur intégré joue la première et enchaîne sur
+                 les suivantes. L'ancien « listType=search » du lecteur a été retiré par YouTube : il ne rend plus
+                 qu'une erreur.
 Chaque recherche web compte une requête sortie sur Internet."""
 import html
 import logging
@@ -62,15 +64,44 @@ def rechercher(requete: str, nombre: int = 8) -> list[dict]:
     return resultats
 
 
+def videos_youtube(requete: str, nombre: int = 6) -> list[dict]:
+    """Les premières vidéos que YouTube rend pour cette recherche : identifiant, titre, chaîne."""
+    import yt_dlp
+    compteur.compter("youtube")
+    options = {"quiet": True, "no_warnings": True, "skip_download": True, "noprogress": True, "extract_flat": "in_playlist",
+               "logger": logging.getLogger("yt_dlp_silence"), "socket_timeout": 15}
+    with yt_dlp.YoutubeDL(options) as ydl:
+        info = ydl.extract_info(f"ytsearch{nombre}:{requete}", download=False) or {}
+    return [{"id": e["id"], "titre": e.get("title") or "", "chaine": e.get("channel") or e.get("uploader") or ""}
+            for e in info.get("entries") or [] if re.fullmatch(r"[A-Za-z0-9_-]{11}", e.get("id") or "")]
+
+
+def url_lecteur(videos: list[dict]) -> str:
+    """Le lecteur intégré sur la première vidéo, les suivantes en file d'attente."""
+    url = f"https://www.youtube.com/embed/{videos[0]['id']}?autoplay=1"
+    if len(videos) > 1:
+        url += "&playlist=" + ",".join(v["id"] for v in videos[1:])
+    return url
+
+
 def executer(requete: str, sur: str = "web") -> str:
     requete = urllib.parse.unquote_plus(requete or "").strip()
     if not requete:
         return "Que dois-je chercher ?"
     if (sur or "web").lower().startswith("you"):
-        url = "https://www.youtube.com/embed?listType=search&list=" + urllib.parse.quote_plus(requete)
-        sur_evenement({"type": "panneau", "t": time.time(), "genre": "youtube", "titre": f"YouTube : {requete}",
-                       "url": url, "externe": "https://www.youtube.com/results?search_query=" + urllib.parse.quote_plus(requete)})
-        return f"Lecteur YouTube ouvert dans l'interface sur « {requete} »."
+        externe = "https://www.youtube.com/results?search_query=" + urllib.parse.quote_plus(requete)
+        try:
+            videos = videos_youtube(requete)
+        except Exception as e:
+            journal.warning("recherche YouTube impossible : %s", e)
+            videos = []
+        if not videos:
+            return (f"Je n'ai pas pu chercher « {requete} » sur YouTube (connexion ou YouTube indisponible). "
+                    f"La recherche se trouve ici : {externe}")
+        sur_evenement({"type": "panneau", "t": time.time(), "genre": "youtube", "titre": f"YouTube : {videos[0]['titre'] or requete}",
+                       "url": url_lecteur(videos), "externe": externe})
+        suite = " | ".join(f"{i + 1}. {v['titre']}" + (f" ({v['chaine']})" if v['chaine'] else "") for i, v in enumerate(videos[:3]))
+        return f"Lecteur YouTube ouvert dans l'interface sur « {requete} », la première vidéo est lancée. Trouvées : {suite}"
     resultats = rechercher(requete)
     sur_evenement({"type": "panneau", "t": time.time(), "genre": "recherche", "titre": f"Recherche : {requete}",
                    "requete": requete, "resultats": resultats,
