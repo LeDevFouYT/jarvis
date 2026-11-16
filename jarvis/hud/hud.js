@@ -515,7 +515,8 @@ async function rafraichir() {
     if (e.prenom) nommer(e.prenom, e.sigle);
     const g = e.machine && e.machine.gpu;
     if (g) {
-      $("vram").textContent = `${(g.vram_utilisee_mo / 1024).toFixed(1)} / ${(g.vram_totale_mo / 1024).toFixed(0)} Go · ${g.temperature} °C`;
+      $("vram").textContent = `${(g.vram_utilisee_mo / 1024).toFixed(1)} / ${(g.vram_totale_mo / 1024).toFixed(0)} Go`
+        + (g.temperature != null ? ` · ${g.temperature} °C` : "");
       $("j-vram").style.transform = `scaleX(${g.vram_utilisee_mo / g.vram_totale_mo})`;
     } else $("vram").textContent = "pas de carte NVIDIA";
     $("charges").textContent = e.charges.length ? e.charges.join(", ") : "rien en mémoire";

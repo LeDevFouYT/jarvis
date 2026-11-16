@@ -1,5 +1,9 @@
 # Nouveautés de Jarvis
 
+## 🔧 Votre carte graphique reconnue partout
+
+- **Fini « pas de carte NVIDIA » sur une carte qui marche.** La jauge du HUD lisait la carte de façon trop fragile : elle abandonnait si l'outil de NVIDIA n'était pas là où elle l'attendait, s'il y avait deux cartes NVIDIA dans le PC, ou si le pilote ne donnait pas la température. Elle cherche maintenant l'outil partout où le pilote le range, garde la plus grosse carte et affiche la mémoire vidéo même sans température. Merci à @lyosatv6328 et à sa RTX 5090 pour le signalement.
+
 ## 🔧 « Mets une vidéo » : fini l'erreur 153
 
 - **Le lecteur YouTube marche de nouveau.** Quand vous demandiez une vidéo, le lecteur affichait « Erreur de configuration du lecteur vidéo, erreur 153 ». YouTube a retiré la recherche intégrée dont Jarvis se servait. Jarvis cherche maintenant les vidéos lui-même, lance la première dans l'interface et enchaîne sur les suivantes. Merci à @lyosatv6328 pour le signalement.

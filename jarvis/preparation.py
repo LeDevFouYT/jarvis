@@ -254,12 +254,9 @@ def verifier() -> int:
 
 # --- installation : VRAM et choix des modèles ---------------------------------------------------
 def vram_mo() -> int | None:
-    try:
-        sortie = subprocess.run(["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"],
-                                capture_output=True, text=True, timeout=10).stdout.strip().splitlines()
-        return max(int(x) for x in sortie) if sortie else None
-    except Exception:
-        return None
+    from .machine import lire_nvidia
+    totaux = [c["memory.total"] for c in lire_nvidia(["memory.total"]) if c["memory.total"]]
+    return max(totaux) if totaux else None
 
 
 def installer() -> int:

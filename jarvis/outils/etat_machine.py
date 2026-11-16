@@ -1,6 +1,5 @@
 """Outil etat_machine : VRAM, processeur, mémoire, disques C: et F:, température GPU. Une phrase parlable."""
 import shutil
-import subprocess
 import time
 from collections import deque
 
@@ -17,14 +16,16 @@ HISTORIQUE = deque(maxlen=90)
 
 
 def gpu() -> dict | None:
-    try:
-        sortie = subprocess.run(
-            ["nvidia-smi", "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu",
-             "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=5).stdout
-        util, vram_util, vram_tot, temp = [int(x) for x in sortie.strip().split(",")]
-        return {"utilisation": util, "vram_utilisee_mo": vram_util, "vram_totale_mo": vram_tot, "temperature": temp}
-    except Exception:
+    """La plus grosse carte NVIDIA. Charge et température peuvent valoir None (« [N/A] » chez certains pilotes) :
+    la mémoire vidéo suffit pour afficher la carte. Lecture commune avec l'installateur (machine.lire_nvidia)."""
+    from ..machine import lire_nvidia
+    cartes = [c for c in lire_nvidia(["memory.total", "memory.used", "utilization.gpu", "temperature.gpu"], timeout=5)
+              if c["memory.total"]]
+    if not cartes:
         return None
+    c = max(cartes, key=lambda c: c["memory.total"])
+    return {"utilisation": c["utilization.gpu"], "vram_utilisee_mo": c["memory.used"] or 0,
+            "vram_totale_mo": c["memory.total"], "temperature": c["temperature.gpu"]}
 
 
 def mesures() -> dict:
@@ -39,7 +40,7 @@ def mesures() -> dict:
             pass
     g = gpu()
     if g:
-        HISTORIQUE.append((time.time(), g["utilisation"], round(100 * g["vram_utilisee_mo"] / g["vram_totale_mo"], 1)))
+        HISTORIQUE.append((time.time(), g["utilisation"] or 0, round(100 * g["vram_utilisee_mo"] / g["vram_totale_mo"], 1)))
     return {"gpu": g,
             "cpu": {"utilisation": psutil.cpu_percent(interval=0.3)},
             "ram": {"utilisation": vm.percent, "totale_go": round(vm.total / 1024 ** 3, 1),
@@ -52,12 +53,14 @@ def _panneau(m: dict):
     jauges = []
     if m["gpu"]:
         g = m["gpu"]
-        jauges += [
-            {"nom": "Mémoire vidéo", "valeur": round(g["vram_utilisee_mo"] / 1024, 1), "max": round(g["vram_totale_mo"] / 1024),
-             "unite": "Go", "alerte": g["vram_utilisee_mo"] > 0.9 * g["vram_totale_mo"]},
-            {"nom": "Charge carte graphique", "valeur": g["utilisation"], "max": 100, "unite": "%", "alerte": g["utilisation"] > 95},
-            {"nom": "Température carte", "valeur": g["temperature"], "max": 100, "unite": "°C", "alerte": g["temperature"] > 85},
-        ]
+        jauges.append({"nom": "Mémoire vidéo", "valeur": round(g["vram_utilisee_mo"] / 1024, 1), "max": round(g["vram_totale_mo"] / 1024),
+                       "unite": "Go", "alerte": g["vram_utilisee_mo"] > 0.9 * g["vram_totale_mo"]})
+        if g["utilisation"] is not None:
+            jauges.append({"nom": "Charge carte graphique", "valeur": g["utilisation"], "max": 100, "unite": "%",
+                           "alerte": g["utilisation"] > 95})
+        if g["temperature"] is not None:
+            jauges.append({"nom": "Température carte", "valeur": g["temperature"], "max": 100, "unite": "°C",
+                           "alerte": g["temperature"] > 85})
     jauges += [
         {"nom": "Processeur", "valeur": round(m["cpu"]["utilisation"]), "max": 100, "unite": "%", "alerte": m["cpu"]["utilisation"] > 90},
         {"nom": "Mémoire vive", "valeur": round(m["ram"]["totale_go"] - m["ram"]["libre_go"], 1), "max": m["ram"]["totale_go"],
@@ -77,9 +80,12 @@ def executer() -> str:
     parties = []
     if m["gpu"]:
         g = m["gpu"]
-        parties.append(f"mémoire vidéo {g['vram_utilisee_mo'] / 1024:.1f} gigaoctets utilisés sur "
-                       f"{g['vram_totale_mo'] / 1024:.0f}, soit {(g['vram_totale_mo'] - g['vram_utilisee_mo']) / 1024:.1f} libres, "
-                       f"carte graphique à {g['temperature']} degrés et {g['utilisation']} % de charge")
+        phrase = (f"mémoire vidéo {g['vram_utilisee_mo'] / 1024:.1f} gigaoctets utilisés sur "
+                  f"{g['vram_totale_mo'] / 1024:.0f}, soit {(g['vram_totale_mo'] - g['vram_utilisee_mo']) / 1024:.1f} libres")
+        details = ([f"{g['temperature']} degrés"] if g["temperature"] is not None else []) +                   ([f"{g['utilisation']} % de charge"] if g["utilisation"] is not None else [])
+        if details:
+            phrase += ", carte graphique à " + " et ".join(details)
+        parties.append(phrase)
     else:
         parties.append("carte graphique injoignable")
     parties.append(f"processeur à {m['cpu']['utilisation']:.0f} %")

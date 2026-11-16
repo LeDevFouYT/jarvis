@@ -7,6 +7,7 @@ import os
 import platform
 import shutil
 import subprocess
+from pathlib import Path
 
 # Une carte vendue « 12 Go » annonce 12 282 Mo, une « 8 Go » 8 188 Mo, une « 16 Go » 16 303 Mo (nvidia-smi) : un seuil
 # au Mo près envoyait une RTX 4070 portable (8 Go) en mode cloud payant, avec un jeton à acheter (vu le 18/09, un
@@ -17,44 +18,84 @@ RAM_MIN_GO = 12
 DISQUE_MIN_GO = 25
 
 
-def _nvidia() -> dict | None:
-    """nvidia-smi : nom, VRAM totale, pilote. None sans carte NVIDIA ou sans pilote."""
-    if not shutil.which("nvidia-smi"):
-        candidats = [os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "nvidia-smi.exe"),
-                     r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe"]
-        exe = next((c for c in candidats if os.path.exists(c)), None)
-    else:
-        exe = "nvidia-smi"
-    if not exe:
-        return None
+# Lecture de nvidia-smi, partagée par l'installateur, la vérification au lancement, le majordome et la jauge du HUD.
+# Corrigé le 16/11 (un abonné, RTX 5090 Astral, pilote à jour : le HUD affichait « pas de carte NVIDIA ») : la jauge
+# appelait « nvidia-smi » par le seul PATH et lisait une seule ligne de nombres. Elle tombait donc dès que nvidia-smi
+# n'était pas dans le PATH (les pilotes récents le rangent aussi dans le DriverStore), dès qu'il y avait deux cartes
+# NVIDIA, ou dès qu'une valeur revenait « [N/A] ». Ici : nvidia-smi cherché partout, une carte par ligne, et une valeur
+# illisible devient None au lieu de faire perdre toute la carte.
+_EXE: list = []          # chemin trouvé, gardé : la jauge interroge toutes les 2 s
+
+
+def nvidia_smi() -> str | None:
+    """Chemin de nvidia-smi, ou None sans pilote NVIDIA."""
+    if _EXE and os.path.exists(_EXE[0]):
+        return _EXE[0]
+    candidats = [shutil.which("nvidia-smi")]
+    if os.name == "nt":
+        racine = os.environ.get("SystemRoot", r"C:\Windows")
+        candidats += [os.path.join(racine, "System32", "nvidia-smi.exe"),
+                      os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "NVIDIA Corporation", "NVSMI", "nvidia-smi.exe")]
+        try:
+            depot = Path(racine) / "System32" / "DriverStore" / "FileRepository"
+            candidats += sorted((str(c) for c in depot.glob("nv*/nvidia-smi.exe")),
+                                key=lambda c: os.path.getmtime(c), reverse=True)
+        except OSError:
+            pass
+    for c in candidats:
+        if c and os.path.exists(c):
+            _EXE[:] = [c]
+            return c
+    return None
+
+
+def _nombre(texte: str) -> int | None:
+    """« 32607 » -> 32607 ; « [N/A] », « [Not Supported] », vide -> None."""
     try:
-        sortie = subprocess.run([exe, "--query-gpu=name,memory.total,driver_version", "--format=csv,noheader,nounits"],
-                                capture_output=True, text=True, timeout=10,
-                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout.strip().splitlines()
-    except Exception:
+        return int(float(texte.strip()))
+    except (ValueError, AttributeError):
         return None
+
+
+def lire_nvidia(champs: list[str], timeout: float = 10) -> list[dict]:
+    """Une ligne de nvidia-smi par carte -> [{champ: valeur}]. Le premier champ peut être un texte (name) ; les autres
+    sont des nombres, None quand la carte ne les donne pas. Liste vide sans pilote ou si nvidia-smi échoue."""
+    exe = nvidia_smi()
+    if not exe:
+        return []
+    try:
+        sortie = subprocess.run([exe, "--query-gpu=" + ",".join(champs), "--format=csv,noheader,nounits"],
+                                capture_output=True, text=True, timeout=timeout,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout or ""
+    except Exception:
+        return []
+    texte = champs[0] in ("name", "driver_version")
     cartes = []
-    for ligne in sortie:
-        parties = [p.strip() for p in ligne.split(",")]
-        if len(parties) >= 2:
-            try:
-                cartes.append({"nom": parties[0], "vram_mo": int(float(parties[1])), "pilote": parties[2] if len(parties) > 2 else ""})
-            except ValueError:
-                continue
+    for ligne in sortie.strip().splitlines():
+        # le nom vient en premier : on coupe par la droite, une virgule dans un nom ne décale pas les nombres
+        parties = ligne.rsplit(",", len(champs) - 1) if texte else ligne.split(",")
+        if len(parties) != len(champs):
+            continue
+        carte = {}
+        for champ, valeur in zip(champs, parties):
+            carte[champ] = valeur.strip() if champ in ("name", "driver_version") else _nombre(valeur)
+        cartes.append(carte)
+    return cartes
+
+
+def _nvidia() -> dict | None:
+    """nvidia-smi : nom, VRAM totale, pilote de la plus grosse carte. None sans carte NVIDIA ou sans pilote."""
+    cartes = [c for c in lire_nvidia(["name", "memory.total", "driver_version"]) if c["memory.total"]]
     if not cartes:
         return None
-    return max(cartes, key=lambda c: c["vram_mo"])
+    c = max(cartes, key=lambda c: c["memory.total"])
+    return {"nom": c["name"], "vram_mo": c["memory.total"], "pilote": c["driver_version"]}
 
 
 def vram_libre_mo() -> int | None:
-    """Mémoire vidéo libre à l'instant (nvidia-smi), None sans carte NVIDIA."""
-    exe = shutil.which("nvidia-smi") or os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "nvidia-smi.exe")
-    try:
-        sortie = subprocess.run([exe, "--query-gpu=memory.free", "--format=csv,noheader,nounits"], capture_output=True,
-                                text=True, timeout=10, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout.split()
-        return max(int(float(x)) for x in sortie) if sortie else None
-    except Exception:
-        return None
+    """Mémoire vidéo libre à l'instant sur la carte la plus libre, None sans carte NVIDIA."""
+    libres = [c["memory.free"] for c in lire_nvidia(["memory.free"]) if c["memory.free"] is not None]
+    return max(libres) if libres else None
 
 
 def _ram_go() -> float:
